@@ -1,0 +1,1 @@
+enum CardioSource { manual, imported }
