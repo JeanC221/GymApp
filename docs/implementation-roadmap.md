@@ -62,6 +62,13 @@ Levantar una base de proyecto que no obligue a reestructurar todo despues.
 - preparar go_router y routing inicial vacio
 - preparar Riverpod como sistema de estado
 
+### Nota tecnica
+El tooling de generacion de codigo para modelos y persistencia se difiere a Fase 1.
+Motivo:
+- en Fase 0 todavia no hay modelos definitivos
+- evita bloquear el bootstrap por conflictos de versiones innecesarios
+- permite introducir Isar y serializacion cuando ya exista el dominio real
+
 ### Decisiones a fijar aqui
 - nombres de paquetes
 - organizacion exacta de directorios

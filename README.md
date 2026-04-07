@@ -3,8 +3,8 @@
 Aplicacion de gym para Android construida con Flutter y Dart.
 
 ## Estado actual
-Este repositorio esta en fase de planificacion y diseno.
-Aun no contiene implementacion Flutter.
+Este repositorio ya inicio la implementacion Flutter.
+Actualmente esta en Fase 0.
 
 Ya estan definidos:
 - diseno visual en Pencil
@@ -38,4 +38,11 @@ Ya estan definidos:
 - fl_chart
 
 ## Estado de implementacion
-Pendiente. El siguiente paso sera iniciar la Fase 0 del roadmap.
+Fase 0 iniciada.
+
+Base ya montada:
+- proyecto Flutter creado
+- shell inicial de app
+- routing base
+- theme base light/dark
+- estructura inicial por capas
