@@ -20,3 +20,6 @@ Thumbs.db
 
 # Misc
 coverage/
+isar.dll
+libisar.so
+libisar.dylib
