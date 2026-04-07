@@ -1,0 +1,1 @@
+enum ProgressRange { last30Days, last8Weeks, allTime }

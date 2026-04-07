@@ -1,0 +1,1 @@
+enum WorkoutSessionStatus { pending, inProgress, completed, skipped }
