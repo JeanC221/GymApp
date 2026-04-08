@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -46,6 +47,36 @@ void main() {
     expect(find.text('Week'), findsOneWidget);
     expect(find.text('Progress'), findsOneWidget);
     expect(find.text('Settings'), findsOneWidget);
+  });
+
+  testWidgets('SmartFit applies the persisted theme mode', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          appBootstrapProvider.overrideWith(
+            (ref) async => AppBootstrap(
+              scheduleRepository: _FakeScheduleRepository(),
+              workoutRepository: _FakeWorkoutRepository(),
+              settingsRepository: _FakeSettingsRepository(
+                const AppSettings(
+                  id: 'settings',
+                  themeMode: AppThemePreference.dark,
+                  weightUnit: WeightUnit.kg,
+                  firstLaunchCompleted: true,
+                  lastBackupAt: null,
+                  preferredGraphRange: ProgressRange.last30Days,
+                ),
+              ),
+            ),
+          ),
+        ],
+        child: const SmartFitApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final app = tester.widget<MaterialApp>(find.byType(MaterialApp));
+    expect(app.themeMode, ThemeMode.dark);
   });
 }
 
@@ -188,18 +219,24 @@ class _FakeWorkoutRepository implements WorkoutRepository {
 }
 
 class _FakeSettingsRepository implements SettingsRepository {
-  @override
-  Future<AppSettings?> getSettings() async {
-    return const AppSettings(
+  _FakeSettingsRepository([
+    this._settings = const AppSettings(
       id: 'settings',
       themeMode: AppThemePreference.system,
       weightUnit: WeightUnit.kg,
       firstLaunchCompleted: true,
       lastBackupAt: null,
       preferredGraphRange: ProgressRange.last30Days,
-    );
-  }
+    ),
+  ]);
+
+  AppSettings _settings;
 
   @override
-  Future<void> saveSettings(AppSettings settings) async {}
+  Future<AppSettings?> getSettings() async => _settings;
+
+  @override
+  Future<void> saveSettings(AppSettings settings) async {
+    _settings = settings;
+  }
 }

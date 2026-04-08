@@ -4,6 +4,7 @@ import 'package:smartfit/app/bootstrap/app_bootstrap.dart';
 import 'package:smartfit/app/router/app_router.dart';
 import 'package:smartfit/app/theme/app_theme.dart';
 import 'package:smartfit/core/constants/app_constants.dart';
+import 'package:smartfit/features/settings/presentation/providers/app_settings_provider.dart';
 
 class SmartFitApp extends ConsumerWidget {
   const SmartFitApp({super.key});
@@ -11,12 +12,17 @@ class SmartFitApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final bootstrap = ref.watch(appBootstrapProvider);
+    final appSettings = ref.watch(currentAppSettingsProvider);
+    final themeMode = appSettings.maybeWhen(
+      data: (settings) => appThemeModeFromPreference(settings.themeMode),
+      orElse: () => ThemeMode.system,
+    );
 
     return bootstrap.when(
       data: (_) => MaterialApp.router(
         title: AppConstants.appName,
         debugShowCheckedModeBanner: false,
-        themeMode: ThemeMode.system,
+        themeMode: themeMode,
         theme: AppTheme.light,
         darkTheme: AppTheme.dark,
         routerConfig: ref.watch(appRouterProvider),
@@ -24,7 +30,7 @@ class SmartFitApp extends ConsumerWidget {
       loading: () => MaterialApp(
         title: AppConstants.appName,
         debugShowCheckedModeBanner: false,
-        themeMode: ThemeMode.system,
+        themeMode: themeMode,
         theme: AppTheme.light,
         darkTheme: AppTheme.dark,
         home: const _AppStartupState(
@@ -36,7 +42,7 @@ class SmartFitApp extends ConsumerWidget {
       error: (error, stackTrace) => MaterialApp(
         title: AppConstants.appName,
         debugShowCheckedModeBanner: false,
-        themeMode: ThemeMode.system,
+        themeMode: themeMode,
         theme: AppTheme.light,
         darkTheme: AppTheme.dark,
         home: _AppStartupState(
