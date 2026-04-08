@@ -9,6 +9,9 @@ import 'package:smartfit/core/domain/entities/strength_template.dart';
 import 'package:smartfit/core/domain/entities/workout_session.dart';
 import 'package:smartfit/core/domain/enums/cardio_source.dart';
 import 'package:smartfit/core/domain/enums/exercise_type.dart';
+import 'package:smartfit/core/domain/repositories/schedule_repository.dart';
+import 'package:smartfit/core/domain/repositories/workout_repository.dart';
+import 'package:smartfit/core/domain/rules/plan_day_rules.dart';
 import 'package:smartfit/core/domain/enums/workout_session_status.dart';
 import 'package:smartfit/core/utils/app_id_factory.dart';
 import 'package:smartfit/features/week/presentation/controllers/week_controller.dart';
@@ -38,6 +41,10 @@ final dayDetailProvider =
   if (day == null) {
     throw StateError('The requested day could not be found in the active plan.');
   }
+
+  final transferTargets = days
+      .where((item) => item.id != dayId && item.isTrainingDay)
+      .toList(growable: false);
 
   final today = DateTime.now();
   final session = await workoutRepository.getSessionForPlanDayAndDate(
@@ -97,6 +104,7 @@ final dayDetailProvider =
     day: day,
     todaySession: session,
     exercises: items,
+    transferTargets: transferTargets,
   );
 });
 
@@ -162,8 +170,20 @@ class DayDetailController {
     required String displayName,
     required int targetSets,
     required int targetReps,
+    bool trimOverflowLogs = false,
   }) async {
     final bootstrap = await _ref.read(appBootstrapProvider.future);
+    var trimmedLogs = false;
+
+    if (targetSets < template.targetSets) {
+      trimmedLogs = await _trimOverflowStrengthLogs(
+        workoutRepository: bootstrap.workoutRepository,
+        exerciseId: exercise.id,
+        keepSets: targetSets,
+        trimOverflowLogs: trimOverflowLogs,
+      );
+    }
+
     await bootstrap.scheduleRepository.saveStrengthExercise(
       exercise: exercise.copyWith(displayName: displayName.trim()),
       template: template.copyWith(
@@ -172,6 +192,9 @@ class DayDetailController {
       ),
     );
     _bumpSchedule();
+    if (trimmedLogs) {
+      _bumpWorkout();
+    }
   }
 
   Future<void> addCardioExercise({
@@ -226,7 +249,60 @@ class DayDetailController {
   Future<void> deleteExercise(String exerciseId) async {
     final bootstrap = await _ref.read(appBootstrapProvider.future);
     await bootstrap.scheduleRepository.deleteExercise(exerciseId);
+    await _normalizeExerciseOrder(bootstrap.scheduleRepository, dayId);
     _bumpSchedule();
+  }
+
+  Future<void> moveExerciseUp(String exerciseId) async {
+    await _moveExerciseWithinDay(exerciseId: exerciseId, offset: -1);
+  }
+
+  Future<void> moveExerciseDown(String exerciseId) async {
+    await _moveExerciseWithinDay(exerciseId: exerciseId, offset: 1);
+  }
+
+  Future<void> reorderExercise({
+    required String exerciseId,
+    required int targetIndex,
+  }) async {
+    final bootstrap = await _ref.read(appBootstrapProvider.future);
+    final repository = bootstrap.scheduleRepository;
+    final exercises = await repository.listExercises(dayId);
+    final currentIndex = exercises.indexWhere((item) => item.id == exerciseId);
+    if (currentIndex == -1) {
+      throw StateError('The requested exercise could not be found.');
+    }
+    if (targetIndex < 0 || targetIndex >= exercises.length || currentIndex == targetIndex) {
+      return;
+    }
+
+    final reordered = [...exercises];
+    final moved = reordered.removeAt(currentIndex);
+    reordered.insert(targetIndex, moved);
+    await repository.reorderExercises(dayId, reordered);
+    _bumpSchedule();
+  }
+
+  Future<void> copyExerciseToDay({
+    required DayExerciseDetail item,
+    required String targetDayId,
+  }) async {
+    await _copyOrMoveExerciseToDay(
+      item: item,
+      targetDayId: targetDayId,
+      deleteFromSource: false,
+    );
+  }
+
+  Future<void> moveExerciseToDay({
+    required DayExerciseDetail item,
+    required String targetDayId,
+  }) async {
+    await _copyOrMoveExerciseToDay(
+      item: item,
+      targetDayId: targetDayId,
+      deleteFromSource: true,
+    );
   }
 
   Future<void> saveStrengthLogs({
@@ -380,6 +456,171 @@ class DayDetailController {
     return null;
   }
 
+  Future<void> _moveExerciseWithinDay({
+    required String exerciseId,
+    required int offset,
+  }) async {
+    final bootstrap = await _ref.read(appBootstrapProvider.future);
+    final repository = bootstrap.scheduleRepository;
+    final exercises = await repository.listExercises(dayId);
+    final currentIndex = exercises.indexWhere((item) => item.id == exerciseId);
+    if (currentIndex == -1) {
+      throw StateError('The requested exercise could not be found.');
+    }
+
+    final nextIndex = currentIndex + offset;
+    if (nextIndex < 0 || nextIndex >= exercises.length) {
+      return;
+    }
+
+    final reordered = [...exercises];
+    final moved = reordered.removeAt(currentIndex);
+    reordered.insert(nextIndex, moved);
+    await repository.reorderExercises(dayId, reordered);
+    _bumpSchedule();
+  }
+
+  Future<void> _copyOrMoveExerciseToDay({
+    required DayExerciseDetail item,
+    required String targetDayId,
+    required bool deleteFromSource,
+  }) async {
+    if (targetDayId == dayId) {
+      throw StateError('Choose a different training day for this action.');
+    }
+
+    final bootstrap = await _ref.read(appBootstrapProvider.future);
+    final scheduleRepository = bootstrap.scheduleRepository;
+    final targetDay = await _loadTransferTarget(
+      scheduleRepository: scheduleRepository,
+      targetDayId: targetDayId,
+    );
+    PlanDayRules.validateCanAcceptExercises(targetDay);
+
+    final targetExercises = await scheduleRepository.listExercises(targetDayId);
+    final nextOrderIndex = _nextOrderIndex(targetExercises);
+
+    if (deleteFromSource) {
+      await scheduleRepository.deleteExercise(item.exercise.id);
+    }
+
+    if (item.type == ExerciseType.strength) {
+      final exerciseId = deleteFromSource ? item.exercise.id : AppIdFactory.next('exercise');
+      await scheduleRepository.saveStrengthExercise(
+        exercise: item.exercise.copyWith(
+          id: exerciseId,
+          planDayId: targetDayId,
+          orderIndex: nextOrderIndex,
+        ),
+        template: item.strengthTemplate!.copyWith(exerciseTemplateId: exerciseId),
+      );
+    } else {
+      final exerciseId = deleteFromSource ? item.exercise.id : AppIdFactory.next('exercise');
+      await scheduleRepository.saveCardioExercise(
+        exercise: item.exercise.copyWith(
+          id: exerciseId,
+          planDayId: targetDayId,
+          orderIndex: nextOrderIndex,
+        ),
+        template: item.cardioTemplate!.copyWith(exerciseTemplateId: exerciseId),
+      );
+    }
+
+    if (deleteFromSource) {
+      await _normalizeExerciseOrder(scheduleRepository, dayId);
+    }
+    await _normalizeExerciseOrder(scheduleRepository, targetDayId);
+    _bumpSchedule();
+  }
+
+  Future<PlanDay> _loadTransferTarget({
+    required ScheduleRepository scheduleRepository,
+    required String targetDayId,
+  }) async {
+    final activePlan = await scheduleRepository.getActivePlan();
+    if (activePlan == null) {
+      throw StateError('No active plan is available.');
+    }
+
+    final days = await scheduleRepository.listCreatedDays(activePlan.id);
+    for (final item in days) {
+      if (item.id == targetDayId) {
+        return item;
+      }
+    }
+
+    throw StateError('The selected target day could not be found.');
+  }
+
+  Future<void> _normalizeExerciseOrder(
+    ScheduleRepository scheduleRepository,
+    String planDayId,
+  ) async {
+    final exercises = await scheduleRepository.listExercises(planDayId);
+    var requiresNormalization = false;
+    for (var index = 0; index < exercises.length; index++) {
+      if (exercises[index].orderIndex != index) {
+        requiresNormalization = true;
+        break;
+      }
+    }
+    if (!requiresNormalization) {
+      return;
+    }
+    await scheduleRepository.reorderExercises(planDayId, exercises);
+  }
+
+  int _nextOrderIndex(List<ExerciseTemplate> exercises) {
+    if (exercises.isEmpty) {
+      return 0;
+    }
+    var maxOrderIndex = exercises.first.orderIndex;
+    for (final exercise in exercises.skip(1)) {
+      if (exercise.orderIndex > maxOrderIndex) {
+        maxOrderIndex = exercise.orderIndex;
+      }
+    }
+    return maxOrderIndex + 1;
+  }
+
+  Future<bool> _trimOverflowStrengthLogs({
+    required WorkoutRepository workoutRepository,
+    required String exerciseId,
+    required int keepSets,
+    required bool trimOverflowLogs,
+  }) async {
+    final session = await workoutRepository.getSessionForPlanDayAndDate(
+      planDayId: dayId,
+      sessionDate: DateTime.now(),
+    );
+    if (session == null) {
+      return false;
+    }
+
+    final existingLogs = await workoutRepository.listStrengthSetLogs(session.id);
+    final overflowLogs = existingLogs
+        .where((item) => item.exerciseTemplateId == exerciseId && item.setIndex >= keepSets)
+        .toList(growable: false);
+    if (overflowLogs.isEmpty) {
+      return false;
+    }
+    if (!trimOverflowLogs) {
+      throw StrengthSetReductionConflict(
+        keepSets: keepSets,
+        trimmedLogCount: overflowLogs.length,
+      );
+    }
+
+    final retained = existingLogs
+        .where((item) => item.exerciseTemplateId != exerciseId || item.setIndex < keepSets)
+        .toList(growable: false);
+    await workoutRepository.deleteStrengthLogsForSession(session.id);
+    if (retained.isNotEmpty) {
+      await workoutRepository.saveStrengthSetLogs(retained);
+    }
+    return true;
+  }
+
   void _bumpSchedule() {
     _ref.read(weekRefreshTickProvider.notifier).update((state) => state + 1);
   }
@@ -394,15 +635,18 @@ class DayDetailState {
     required this.day,
     required this.todaySession,
     required this.exercises,
+    required this.transferTargets,
   });
 
   final PlanDay day;
   final WorkoutSession? todaySession;
   final List<DayExerciseDetail> exercises;
+  final List<PlanDay> transferTargets;
 
   bool get isTrainingDay => day.isTrainingDay;
   bool get isRestDay => day.isRestDay;
   bool get hasExercises => exercises.isNotEmpty;
+  bool get hasTransferTargets => transferTargets.isNotEmpty;
 }
 
 class DayExerciseDetail {
@@ -467,4 +711,19 @@ class StrengthSetLogDraft {
   final bool isCompleted;
   final int? performedReps;
   final double? performedWeight;
+}
+
+class StrengthSetReductionConflict implements Exception {
+  const StrengthSetReductionConflict({
+    required this.keepSets,
+    required this.trimmedLogCount,
+  });
+
+  final int keepSets;
+  final int trimmedLogCount;
+
+  @override
+  String toString() {
+    return 'Reducing this exercise to $keepSets sets would remove $trimmedLogCount saved set logs from today.';
+  }
 }

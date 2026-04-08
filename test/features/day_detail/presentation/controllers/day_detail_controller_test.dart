@@ -11,6 +11,7 @@ import 'package:smartfit/core/domain/entities/strength_template.dart';
 import 'package:smartfit/core/domain/entities/weekly_plan.dart';
 import 'package:smartfit/core/domain/entities/workout_session.dart';
 import 'package:smartfit/core/domain/enums/app_theme_preference.dart';
+import 'package:smartfit/core/domain/enums/exercise_type.dart';
 import 'package:smartfit/core/domain/enums/plan_day_type.dart';
 import 'package:smartfit/core/domain/enums/progress_range.dart';
 import 'package:smartfit/core/domain/enums/weekday.dart';
@@ -168,6 +169,242 @@ void main() {
 
       await controller.deleteCardioLog(exercise.id);
       expect(await workoutRepository.listCardioLogs(session.id), isEmpty);
+    });
+
+    test('reorders exercises inside the current day', () async {
+      final controller = container.read(dayDetailControllerProvider('day_1'));
+      await controller.addStrengthExercise(
+        displayName: 'Bench Press',
+        targetSets: 4,
+        targetReps: 8,
+      );
+      await controller.addStrengthExercise(
+        displayName: 'Incline Dumbbell Press',
+        targetSets: 3,
+        targetReps: 10,
+      );
+      await controller.addCardioExercise(
+        displayName: 'Bike',
+        cardioType: 'Bike',
+        durationMinutes: 15,
+      );
+
+      var detail = await container.read(dayDetailProvider('day_1').future);
+      await controller.moveExerciseDown(detail.exercises.first.exercise.id);
+
+      detail = await container.read(dayDetailProvider('day_1').future);
+      expect(
+        detail.exercises.map((item) => item.exercise.displayName).toList(),
+        ['Incline Dumbbell Press', 'Bench Press', 'Bike'],
+      );
+
+      await controller.moveExerciseUp(detail.exercises.last.exercise.id);
+      detail = await container.read(dayDetailProvider('day_1').future);
+      expect(
+        detail.exercises.map((item) => item.exercise.displayName).toList(),
+        ['Incline Dumbbell Press', 'Bike', 'Bench Press'],
+      );
+    });
+
+    test('moves an exercise to another training day and keeps source order normalized', () async {
+      scheduleRepository.seedPlanDay(
+        PlanDay(
+          id: 'day_2',
+          weeklyPlanId: 'plan_1',
+          weekday: Weekday.tuesday,
+          type: PlanDayType.training,
+          routineName: 'Pull',
+          orderIndex: 1,
+        ),
+      );
+
+      final controller = container.read(dayDetailControllerProvider('day_1'));
+      await controller.addStrengthExercise(
+        displayName: 'Bench Press',
+        targetSets: 4,
+        targetReps: 8,
+      );
+      await controller.addCardioExercise(
+        displayName: 'Bike',
+        cardioType: 'Bike',
+        durationMinutes: 12,
+      );
+
+      var detail = await container.read(dayDetailProvider('day_1').future);
+      await controller.moveExerciseToDay(
+        item: detail.exercises.first,
+        targetDayId: 'day_2',
+      );
+
+      detail = await container.read(dayDetailProvider('day_1').future);
+      expect(detail.exercises, hasLength(1));
+      expect(detail.exercises.single.exercise.displayName, 'Bike');
+      expect(detail.exercises.single.exercise.orderIndex, 0);
+
+      final dayTwoDetail = await container.read(dayDetailProvider('day_2').future);
+      expect(dayTwoDetail.exercises, hasLength(1));
+      expect(dayTwoDetail.exercises.single.exercise.displayName, 'Bench Press');
+      expect(dayTwoDetail.exercises.single.exercise.id, isNotEmpty);
+      expect(dayTwoDetail.exercises.single.exercise.orderIndex, 0);
+      expect(dayTwoDetail.exercises.single.strengthTemplate?.exerciseTemplateId,
+          dayTwoDetail.exercises.single.exercise.id);
+    });
+
+    test('copies an exercise to another training day with a new id and stable append order', () async {
+      scheduleRepository.seedPlanDay(
+        PlanDay(
+          id: 'day_2',
+          weeklyPlanId: 'plan_1',
+          weekday: Weekday.tuesday,
+          type: PlanDayType.training,
+          routineName: 'Pull',
+          orderIndex: 1,
+        ),
+      );
+      await scheduleRepository.saveCardioExercise(
+        exercise: ExerciseTemplate(
+          id: 'day2_cardio',
+          planDayId: 'day_2',
+          type: ExerciseType.cardio,
+          orderIndex: 0,
+          displayName: 'Rowing',
+        ),
+        template: CardioTemplate(
+          exerciseTemplateId: 'day2_cardio',
+          cardioType: 'Rowing',
+          defaultDurationMinutes: 10,
+        ),
+      );
+
+      final controller = container.read(dayDetailControllerProvider('day_1'));
+      await controller.addStrengthExercise(
+        displayName: 'Bench Press',
+        targetSets: 4,
+        targetReps: 8,
+      );
+
+      final sourceDetail = await container.read(dayDetailProvider('day_1').future);
+      final sourceItem = sourceDetail.exercises.single;
+      await controller.copyExerciseToDay(
+        item: sourceItem,
+        targetDayId: 'day_2',
+      );
+
+      final updatedSource = await container.read(dayDetailProvider('day_1').future);
+      expect(updatedSource.exercises, hasLength(1));
+
+      final dayTwoDetail = await container.read(dayDetailProvider('day_2').future);
+      expect(dayTwoDetail.exercises, hasLength(2));
+      expect(
+        dayTwoDetail.exercises.map((item) => item.exercise.displayName).toList(),
+        ['Rowing', 'Bench Press'],
+      );
+      expect(dayTwoDetail.exercises.last.exercise.id, isNot(sourceItem.exercise.id));
+      expect(dayTwoDetail.exercises.last.exercise.orderIndex, 1);
+      expect(
+        dayTwoDetail.exercises.last.strengthTemplate?.exerciseTemplateId,
+        dayTwoDetail.exercises.last.exercise.id,
+      );
+    });
+
+    test('blocks moving an exercise into a rest day', () async {
+      scheduleRepository.seedPlanDay(
+        PlanDay(
+          id: 'day_rest',
+          weeklyPlanId: 'plan_1',
+          weekday: Weekday.wednesday,
+          type: PlanDayType.rest,
+          orderIndex: 1,
+        ),
+      );
+
+      final controller = container.read(dayDetailControllerProvider('day_1'));
+      await controller.addStrengthExercise(
+        displayName: 'Bench Press',
+        targetSets: 4,
+        targetReps: 8,
+      );
+      final detail = await container.read(dayDetailProvider('day_1').future);
+
+      await expectLater(
+        controller.moveExerciseToDay(
+          item: detail.exercises.single,
+          targetDayId: 'day_rest',
+        ),
+        throwsA(isA<StateError>()),
+      );
+    });
+
+    test('requires confirmation before trimming overflow strength logs', () async {
+      final controller = container.read(dayDetailControllerProvider('day_1'));
+      await controller.addStrengthExercise(
+        displayName: 'Bench Press',
+        targetSets: 4,
+        targetReps: 8,
+      );
+
+      var detail = await container.read(dayDetailProvider('day_1').future);
+      final item = detail.exercises.single;
+
+      await controller.saveStrengthLogs(
+        exercise: item.exercise,
+        drafts: const [
+          StrengthSetLogDraft(
+            isCompleted: true,
+            performedReps: 8,
+            performedWeight: 60,
+          ),
+          StrengthSetLogDraft(
+            isCompleted: true,
+            performedReps: 8,
+            performedWeight: 62.5,
+          ),
+          StrengthSetLogDraft(
+            isCompleted: true,
+            performedReps: 7,
+            performedWeight: 62.5,
+          ),
+          StrengthSetLogDraft(
+            isCompleted: false,
+            performedReps: null,
+            performedWeight: null,
+          ),
+        ],
+      );
+
+      await expectLater(
+        controller.updateStrengthExercise(
+          exercise: item.exercise,
+          template: item.strengthTemplate!,
+          displayName: item.exercise.displayName,
+          targetSets: 2,
+          targetReps: 8,
+        ),
+        throwsA(isA<StrengthSetReductionConflict>()),
+      );
+
+      await controller.updateStrengthExercise(
+        exercise: item.exercise,
+        template: item.strengthTemplate!,
+        displayName: item.exercise.displayName,
+        targetSets: 2,
+        targetReps: 8,
+        trimOverflowLogs: true,
+      );
+
+      detail = await container.read(dayDetailProvider('day_1').future);
+      expect(detail.exercises.single.strengthTemplate?.targetSets, 2);
+
+      final session = await workoutRepository.getSessionForPlanDayAndDate(
+        planDayId: 'day_1',
+        sessionDate: DateTime.now(),
+      );
+      final remainingLogs = await workoutRepository.listStrengthSetLogs(session!.id);
+      final exerciseLogs = remainingLogs
+          .where((log) => log.exerciseTemplateId == item.exercise.id)
+          .toList(growable: false);
+      expect(exerciseLogs, hasLength(2));
+      expect(exerciseLogs.map((log) => log.setIndex).toList(), [0, 1]);
     });
 
     test('completes the session for today', () async {
