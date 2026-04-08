@@ -9,7 +9,7 @@ import 'package:smartfit/core/domain/enums/weekday.dart';
 import 'package:smartfit/features/week/presentation/controllers/week_controller.dart';
 
 final todayOverviewProvider = FutureProvider<TodayOverview>((ref) async {
-  ref.watch(weekControllerProvider);
+  ref.watch(weekRefreshTickProvider);
 
   final bootstrap = await ref.watch(appBootstrapProvider.future);
   final scheduleRepository = bootstrap.scheduleRepository;
