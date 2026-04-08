@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:smartfit/core/domain/entities/plan_day.dart';
 import 'package:smartfit/core/domain/enums/plan_day_type.dart';
 import 'package:smartfit/core/domain/enums/weekday.dart';
+import 'package:smartfit/features/day_detail/presentation/pages/day_detail_page.dart';
 import 'package:smartfit/features/shared/presentation/widgets/app_bottom_sheet_scaffold.dart';
 import 'package:smartfit/features/shared/presentation/widgets/app_confirm_dialog.dart';
 import 'package:smartfit/features/shared/presentation/widgets/app_empty_state.dart';
@@ -101,6 +103,9 @@ class _WeekPageState extends ConsumerState<WeekPage> {
                         onEdit: () => _showEditDaySheet(ref, weekState, weekState.days[index]),
                         onMoveWeekday: () => _showMoveDaySheet(ref, weekState, weekState.days[index]),
                         onDelete: () => _confirmDeleteDay(ref, weekState.days[index].day.id),
+                        onOpen: () => context.go(
+                          DayDetailPage.buildPath(weekState.days[index].day.id),
+                        ),
                         onMoveUp: index > 0
                             ? () => _moveDayPosition(ref, weekState.days[index].day.id, -1)
                             : null,
@@ -332,6 +337,7 @@ class _WeekDayPanel extends StatelessWidget {
     required this.onEdit,
     required this.onMoveWeekday,
     required this.onDelete,
+    required this.onOpen,
     this.onMoveUp,
     this.onMoveDown,
   });
@@ -343,6 +349,7 @@ class _WeekDayPanel extends StatelessWidget {
   final VoidCallback onEdit;
   final VoidCallback onMoveWeekday;
   final VoidCallback onDelete;
+  final VoidCallback onOpen;
   final VoidCallback? onMoveUp;
   final VoidCallback? onMoveDown;
 
@@ -356,17 +363,24 @@ class _WeekDayPanel extends StatelessWidget {
             weekdayLabel: overview.day.weekday.displayName,
             routineName: overview.day.routineName ?? 'Training',
             exerciseSummary: overview.summaryText,
+            onTap: onOpen,
           )
         else
           RestDayCard(
             weekdayLabel: overview.day.weekday.displayName,
             message: 'Recovery and no planned exercises.',
+            onTap: onOpen,
           ),
         const SizedBox(height: AppSpacing.md),
         Wrap(
           spacing: AppSpacing.sm,
           runSpacing: AppSpacing.sm,
           children: [
+            AppIconCapsuleButton(
+              icon: Icons.open_in_new_rounded,
+              label: 'Open',
+              onPressed: onOpen,
+            ),
             AppIconCapsuleButton(
               icon: Icons.edit_outlined,
               label: 'Edit',

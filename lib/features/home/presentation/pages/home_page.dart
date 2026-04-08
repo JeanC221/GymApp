@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:smartfit/app/theme/tokens/app_spacing.dart';
 import 'package:smartfit/core/constants/app_constants.dart';
+import 'package:smartfit/features/day_detail/presentation/pages/day_detail_page.dart';
 import 'package:smartfit/features/home/presentation/providers/today_overview_provider.dart';
 import 'package:smartfit/features/shared/presentation/widgets/app_empty_state.dart';
 import 'package:smartfit/features/shared/presentation/widgets/app_error_state.dart';
@@ -62,9 +63,13 @@ class HomePage extends ConsumerWidget {
               children: [
                 Expanded(
                   child: AppPrimaryButton(
-                    label: today.hasPlanForToday ? 'Open week plan' : 'Create first day',
-                    icon: Icons.calendar_view_week_rounded,
-                    onPressed: () => context.go(WeekPage.routePath),
+                    label: today.hasPlanForToday ? 'Open today detail' : 'Create first day',
+                    icon: today.hasPlanForToday
+                        ? Icons.play_arrow_rounded
+                        : Icons.calendar_view_week_rounded,
+                    onPressed: () => today.hasPlanForToday
+                        ? context.go(DayDetailPage.buildPath(today.day!.id))
+                        : context.go(WeekPage.routePath),
                   ),
                 ),
                 const SizedBox(width: AppSpacing.md),
@@ -89,12 +94,14 @@ class HomePage extends ConsumerWidget {
               RestDayCard(
                 weekdayLabel: today.day!.weekday.displayName,
                 message: today.todaySummary,
+                onTap: () => context.go(DayDetailPage.buildPath(today.day!.id)),
               ),
             ] else ...[
               TrainingDayCard(
                 weekdayLabel: today.day!.weekday.displayName,
                 routineName: today.day!.routineName ?? 'Training day',
                 exerciseSummary: today.todaySummary,
+                onTap: () => context.go(DayDetailPage.buildPath(today.day!.id)),
               ),
               const SizedBox(height: AppSpacing.xl),
               Wrap(
@@ -129,6 +136,7 @@ class HomePage extends ConsumerWidget {
                     lastWeightSummary: item.lastUsedWeight == null
                         ? 'Last used: none yet'
                         : 'Last used: ${item.lastUsedWeight!.toStringAsFixed(item.lastUsedWeight! % 1 == 0 ? 0 : 1)} kg',
+                    onTap: () => context.go(DayDetailPage.buildPath(today.day!.id)),
                   )
                 else
                   CardioExerciseCard(
@@ -139,6 +147,7 @@ class HomePage extends ConsumerWidget {
                     detailSummary: item.cardioTemplate!.defaultIncline == null
                         ? item.cardioTemplate!.cardioType
                         : '${item.cardioTemplate!.cardioType}, incline ${item.cardioTemplate!.defaultIncline}',
+                    onTap: () => context.go(DayDetailPage.buildPath(today.day!.id)),
                   ),
                 const SizedBox(height: AppSpacing.lg),
               ],

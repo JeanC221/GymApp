@@ -7,8 +7,10 @@ import 'package:smartfit/core/domain/enums/weekday.dart';
 import 'package:smartfit/core/domain/repositories/schedule_repository.dart';
 import 'package:smartfit/core/domain/rules/plan_day_rules.dart';
 import 'package:smartfit/core/domain/rules/weekly_plan_rules.dart';
+import 'package:smartfit/core/utils/app_id_factory.dart';
 
 final weekRefreshTickProvider = StateProvider<int>((ref) => 0);
+final workoutRefreshTickProvider = StateProvider<int>((ref) => 0);
 
 final weekControllerProvider =
     AsyncNotifierProvider<WeekController, WeekState>(WeekController.new);
@@ -38,7 +40,7 @@ class WeekController extends AsyncNotifier<WeekState> {
 
       await repository.savePlanDay(
         PlanDay(
-          id: _newId('plan_day'),
+          id: AppIdFactory.next('plan_day'),
           weeklyPlanId: plan.id,
           weekday: weekday,
           type: type,
@@ -198,17 +200,13 @@ class WeekController extends AsyncNotifier<WeekState> {
 
     final now = DateTime.now();
     final created = WeeklyPlan(
-      id: _newId('weekly_plan'),
+      id: AppIdFactory.next('weekly_plan'),
       createdAt: now,
       updatedAt: now,
       isActive: true,
     );
     await repository.saveWeeklyPlan(created);
     return created;
-  }
-
-  String _newId(String prefix) {
-    return '${prefix}_${DateTime.now().microsecondsSinceEpoch}';
   }
 }
 
