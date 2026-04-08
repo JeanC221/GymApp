@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:smartfit/app/theme/tokens/app_spacing.dart';
+import 'package:smartfit/core/domain/entities/plan_day.dart';
 import 'package:smartfit/core/domain/entities/strength_set_log.dart';
+import 'package:smartfit/core/domain/enums/exercise_type.dart';
 import 'package:smartfit/core/domain/enums/workout_session_status.dart';
 import 'package:smartfit/features/day_detail/presentation/controllers/day_detail_controller.dart';
 import 'package:smartfit/features/shared/presentation/layouts/app_page_scaffold.dart';
@@ -143,99 +145,13 @@ class DayDetailPage extends ConsumerWidget {
                     title: 'No exercises yet',
                     description: 'Add planned strength or cardio blocks before you start logging the real session.',
                   )
-                else
-                  for (final item in state.exercises) ...[
-                    if (item.type.name == 'strength')
-                      _StrengthExerciseSection(
-                        item: item,
-                        onEdit: () => _showStrengthTemplateSheet(
-                          context,
-                          initialDraft: StrengthExerciseTemplateDraft(
-                            displayName: item.exercise.displayName,
-                            targetSets: item.strengthTemplate!.targetSets,
-                            targetReps: item.strengthTemplate!.targetReps,
-                          ),
-                          onSave: (draft) => _runAction(
-                            context,
-                            () => controller.updateStrengthExercise(
-                              exercise: item.exercise,
-                              template: item.strengthTemplate!,
-                              displayName: draft.displayName,
-                              targetSets: draft.targetSets,
-                              targetReps: draft.targetReps,
-                            ),
-                            successMessage: 'Strength exercise updated.',
-                          ),
-                        ),
-                        onDelete: () => _confirmDeleteExercise(
-                          context,
-                          onDelete: () => controller.deleteExercise(item.exercise.id),
-                        ),
-                        onLog: () => _showStrengthLogSheet(
-                          context,
-                          item,
-                          onSave: (drafts) => _runAction(
-                            context,
-                            () => controller.saveStrengthLogs(
-                              exercise: item.exercise,
-                              drafts: drafts,
-                            ),
-                            successMessage: 'Strength logs saved.',
-                          ),
-                        ),
-                      )
-                    else
-                      _CardioExerciseSection(
-                        item: item,
-                        onEditTemplate: () => _showCardioTemplateSheet(
-                          context,
-                          initialDraft: CardioExerciseTemplateDraft(
-                            displayName: item.exercise.displayName,
-                            cardioType: item.cardioTemplate!.cardioType,
-                            durationMinutes: item.cardioTemplate!.defaultDurationMinutes ?? 20,
-                            incline: item.cardioTemplate!.defaultIncline,
-                          ),
-                          onSave: (draft) => _runAction(
-                            context,
-                            () => controller.updateCardioExercise(
-                              exercise: item.exercise,
-                              template: item.cardioTemplate!,
-                              displayName: draft.displayName,
-                              cardioType: draft.cardioType,
-                              durationMinutes: draft.durationMinutes,
-                              incline: draft.incline,
-                            ),
-                            successMessage: 'Cardio block updated.',
-                          ),
-                        ),
-                        onDeleteExercise: () => _confirmDeleteExercise(
-                          context,
-                          onDelete: () => controller.deleteExercise(item.exercise.id),
-                        ),
-                        onLog: () => _showCardioLogSheet(
-                          context,
-                          item,
-                          onSave: (draft) => _runAction(
-                            context,
-                            () => controller.saveCardioLog(
-                              exercise: item.exercise,
-                              cardioType: draft.cardioType,
-                              durationMinutes: draft.durationMinutes,
-                              incline: draft.incline,
-                            ),
-                            successMessage: 'Cardio log saved.',
-                          ),
-                        ),
-                        onDeleteLog: item.cardioLog == null
-                            ? null
-                            : () => _runAction(
-                                  context,
-                                  () => controller.deleteCardioLog(item.exercise.id),
-                                  successMessage: 'Cardio log removed.',
-                                ),
-                      ),
-                    const SizedBox(height: AppSpacing.xl),
-                  ],
+                else ...[
+                  _ExerciseReorderList(
+                    state: state,
+                    controller: controller,
+                  ),
+                  const SizedBox(height: AppSpacing.xl),
+                ],
               ],
             ],
           ),
@@ -313,12 +229,16 @@ class _StrengthExerciseSection extends StatelessWidget {
     required this.onEdit,
     required this.onDelete,
     required this.onLog,
+    this.onMoveToDay,
+    this.onCopyToDay,
   });
 
   final DayExerciseDetail item;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
   final VoidCallback onLog;
+  final VoidCallback? onMoveToDay;
+  final VoidCallback? onCopyToDay;
 
   @override
   Widget build(BuildContext context) {
@@ -353,6 +273,18 @@ class _StrengthExerciseSection extends StatelessWidget {
               label: 'Edit',
               onPressed: onEdit,
             ),
+            if (onMoveToDay != null)
+              AppIconCapsuleButton(
+                icon: Icons.redo_rounded,
+                label: 'Move',
+                onPressed: onMoveToDay,
+              ),
+            if (onCopyToDay != null)
+              AppIconCapsuleButton(
+                icon: Icons.content_copy_rounded,
+                label: 'Copy',
+                onPressed: onCopyToDay,
+              ),
             AppIconCapsuleButton(
               icon: Icons.delete_outline_rounded,
               label: 'Delete',
@@ -371,6 +303,8 @@ class _CardioExerciseSection extends StatelessWidget {
     required this.onEditTemplate,
     required this.onDeleteExercise,
     required this.onLog,
+    this.onMoveToDay,
+    this.onCopyToDay,
     this.onDeleteLog,
   });
 
@@ -378,6 +312,8 @@ class _CardioExerciseSection extends StatelessWidget {
   final VoidCallback onEditTemplate;
   final VoidCallback onDeleteExercise;
   final VoidCallback onLog;
+  final VoidCallback? onMoveToDay;
+  final VoidCallback? onCopyToDay;
   final VoidCallback? onDeleteLog;
 
   @override
@@ -412,6 +348,18 @@ class _CardioExerciseSection extends StatelessWidget {
               label: 'Edit',
               onPressed: onEditTemplate,
             ),
+            if (onMoveToDay != null)
+              AppIconCapsuleButton(
+                icon: Icons.redo_rounded,
+                label: 'Move',
+                onPressed: onMoveToDay,
+              ),
+            if (onCopyToDay != null)
+              AppIconCapsuleButton(
+                icon: Icons.content_copy_rounded,
+                label: 'Copy',
+                onPressed: onCopyToDay,
+              ),
             if (onDeleteLog != null)
               AppIconCapsuleButton(
                 icon: Icons.remove_circle_outline_rounded,
@@ -440,6 +388,249 @@ class StrengthExerciseTemplateDraft {
   final String displayName;
   final int targetSets;
   final int targetReps;
+}
+
+class _ExerciseReorderList extends StatelessWidget {
+  const _ExerciseReorderList({
+    required this.state,
+    required this.controller,
+  });
+
+  final DayDetailState state;
+  final DayDetailController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return ReorderableListView.builder(
+      shrinkWrap: true,
+      buildDefaultDragHandles: false,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: state.exercises.length,
+      proxyDecorator: (child, index, animation) {
+        return Material(
+          color: Colors.transparent,
+          child: FadeTransition(
+            opacity: animation.drive(Tween(begin: 0.92, end: 1)),
+            child: child,
+          ),
+        );
+      },
+      onReorder: (oldIndex, newIndex) {
+        var targetIndex = newIndex;
+        if (newIndex > oldIndex) {
+          targetIndex -= 1;
+        }
+        _runAction(
+          context,
+          () => controller.reorderExercise(
+            exerciseId: state.exercises[oldIndex].exercise.id,
+            targetIndex: targetIndex,
+          ),
+          successMessage: 'Exercise order updated.',
+        );
+      },
+      itemBuilder: (context, index) {
+        final item = state.exercises[index];
+        return Padding(
+          key: ValueKey(item.exercise.id),
+          padding: EdgeInsets.only(
+            bottom: index == state.exercises.length - 1 ? 0 : AppSpacing.xl,
+          ),
+          child: _ExerciseReorderItem(
+            index: index,
+            child: item.type == ExerciseType.strength
+                ? _StrengthExerciseSection(
+                    item: item,
+                    onEdit: () => _showStrengthTemplateSheet(
+                      context,
+                      initialDraft: StrengthExerciseTemplateDraft(
+                        displayName: item.exercise.displayName,
+                        targetSets: item.strengthTemplate!.targetSets,
+                        targetReps: item.strengthTemplate!.targetReps,
+                      ),
+                      onSave: (draft) => _runStrengthTemplateAction(
+                        context,
+                        action: (trimOverflowLogs) => controller.updateStrengthExercise(
+                          exercise: item.exercise,
+                          template: item.strengthTemplate!,
+                          displayName: draft.displayName,
+                          targetSets: draft.targetSets,
+                          targetReps: draft.targetReps,
+                          trimOverflowLogs: trimOverflowLogs,
+                        ),
+                        successMessage: 'Strength exercise updated.',
+                      ),
+                    ),
+                    onDelete: () => _confirmDeleteExercise(
+                      context,
+                      onDelete: () => controller.deleteExercise(item.exercise.id),
+                    ),
+                    onMoveToDay: state.hasTransferTargets
+                        ? () => _showExerciseTransferSheet(
+                              context,
+                              title: 'Move exercise',
+                              subtitle: 'Move this exercise template to another training day and keep the weekly order stable.',
+                              targetDays: state.transferTargets,
+                              onSelect: (targetDay) => _runAction(
+                                context,
+                                () => controller.moveExerciseToDay(
+                                  item: item,
+                                  targetDayId: targetDay.id,
+                                ),
+                                successMessage: 'Exercise moved to ${_planDayLabel(targetDay)}.',
+                              ),
+                            )
+                        : null,
+                    onCopyToDay: state.hasTransferTargets
+                        ? () => _showExerciseTransferSheet(
+                              context,
+                              title: 'Copy exercise',
+                              subtitle: 'Create a new copy of this exercise template in another training day.',
+                              targetDays: state.transferTargets,
+                              onSelect: (targetDay) => _runAction(
+                                context,
+                                () => controller.copyExerciseToDay(
+                                  item: item,
+                                  targetDayId: targetDay.id,
+                                ),
+                                successMessage: 'Exercise copied to ${_planDayLabel(targetDay)}.',
+                              ),
+                            )
+                        : null,
+                    onLog: () => _showStrengthLogSheet(
+                      context,
+                      item,
+                      onSave: (drafts) => _runAction(
+                        context,
+                        () => controller.saveStrengthLogs(
+                          exercise: item.exercise,
+                          drafts: drafts,
+                        ),
+                        successMessage: 'Strength logs saved.',
+                      ),
+                    ),
+                  )
+                : _CardioExerciseSection(
+                    item: item,
+                    onEditTemplate: () => _showCardioTemplateSheet(
+                      context,
+                      initialDraft: CardioExerciseTemplateDraft(
+                        displayName: item.exercise.displayName,
+                        cardioType: item.cardioTemplate!.cardioType,
+                        durationMinutes: item.cardioTemplate!.defaultDurationMinutes ?? 20,
+                        incline: item.cardioTemplate!.defaultIncline,
+                      ),
+                      onSave: (draft) => _runAction(
+                        context,
+                        () => controller.updateCardioExercise(
+                          exercise: item.exercise,
+                          template: item.cardioTemplate!,
+                          displayName: draft.displayName,
+                          cardioType: draft.cardioType,
+                          durationMinutes: draft.durationMinutes,
+                          incline: draft.incline,
+                        ),
+                        successMessage: 'Cardio block updated.',
+                      ),
+                    ),
+                    onDeleteExercise: () => _confirmDeleteExercise(
+                      context,
+                      onDelete: () => controller.deleteExercise(item.exercise.id),
+                    ),
+                    onMoveToDay: state.hasTransferTargets
+                        ? () => _showExerciseTransferSheet(
+                              context,
+                              title: 'Move cardio block',
+                              subtitle: 'Move this planned cardio block to another training day.',
+                              targetDays: state.transferTargets,
+                              onSelect: (targetDay) => _runAction(
+                                context,
+                                () => controller.moveExerciseToDay(
+                                  item: item,
+                                  targetDayId: targetDay.id,
+                                ),
+                                successMessage: 'Exercise moved to ${_planDayLabel(targetDay)}.',
+                              ),
+                            )
+                        : null,
+                    onCopyToDay: state.hasTransferTargets
+                        ? () => _showExerciseTransferSheet(
+                              context,
+                              title: 'Copy cardio block',
+                              subtitle: 'Create a new cardio block copy in another training day.',
+                              targetDays: state.transferTargets,
+                              onSelect: (targetDay) => _runAction(
+                                context,
+                                () => controller.copyExerciseToDay(
+                                  item: item,
+                                  targetDayId: targetDay.id,
+                                ),
+                                successMessage: 'Exercise copied to ${_planDayLabel(targetDay)}.',
+                              ),
+                            )
+                        : null,
+                    onLog: () => _showCardioLogSheet(
+                      context,
+                      item,
+                      onSave: (draft) => _runAction(
+                        context,
+                        () => controller.saveCardioLog(
+                          exercise: item.exercise,
+                          cardioType: draft.cardioType,
+                          durationMinutes: draft.durationMinutes,
+                          incline: draft.incline,
+                        ),
+                        successMessage: 'Cardio log saved.',
+                      ),
+                    ),
+                    onDeleteLog: item.cardioLog == null
+                        ? null
+                        : () => _runAction(
+                              context,
+                              () => controller.deleteCardioLog(item.exercise.id),
+                              successMessage: 'Cardio log removed.',
+                            ),
+                  ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _ExerciseReorderItem extends StatelessWidget {
+  const _ExerciseReorderItem({
+    required this.index,
+    required this.child,
+  });
+
+  final int index;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Drag to reorder',
+                style: Theme.of(context).textTheme.labelLarge,
+              ),
+            ),
+            ReorderableDelayedDragStartListener(
+              index: index,
+              child: const Icon(Icons.drag_indicator_rounded),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        child,
+      ],
+    );
+  }
 }
 
 class CardioExerciseTemplateDraft {
@@ -532,6 +723,29 @@ Future<void> _showCardioLogSheet(
   await onSave(draft);
 }
 
+Future<void> _showExerciseTransferSheet(
+  BuildContext context, {
+  required String title,
+  required String subtitle,
+  required List<PlanDay> targetDays,
+  required Future<void> Function(PlanDay day) onSelect,
+}) async {
+  final targetDay = await showModalBottomSheet<PlanDay>(
+    context: context,
+    isScrollControlled: true,
+    builder: (context) => ExerciseTransferSheet(
+      title: title,
+      subtitle: subtitle,
+      targetDays: targetDays,
+      onSelectDay: (day) => Navigator.of(context).pop(day),
+    ),
+  );
+  if (targetDay == null || !context.mounted) {
+    return;
+  }
+  await onSelect(targetDay);
+}
+
 Future<void> _confirmDeleteExercise(
   BuildContext context, {
   required Future<void> Function() onDelete,
@@ -551,6 +765,49 @@ Future<void> _confirmDeleteExercise(
   await onDelete();
 }
 
+Future<void> _runStrengthTemplateAction(
+  BuildContext context, {
+  required Future<void> Function(bool trimOverflowLogs) action,
+  required String successMessage,
+}) async {
+  try {
+    await action(false);
+    if (!context.mounted) {
+      return;
+    }
+    _showActionSuccess(context, successMessage);
+  } on StrengthSetReductionConflict catch (conflict) {
+    final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (context) => StrengthSetTrimConfirmDialog(
+            conflict: conflict,
+          ),
+        ) ??
+        false;
+    if (!confirmed || !context.mounted) {
+      return;
+    }
+
+    try {
+      await action(true);
+      if (!context.mounted) {
+        return;
+      }
+      _showActionSuccess(context, '$successMessage Overflow logs were trimmed.');
+    } catch (error) {
+      if (!context.mounted) {
+        return;
+      }
+      _showActionError(context, error);
+    }
+  } catch (error) {
+    if (!context.mounted) {
+      return;
+    }
+    _showActionError(context, error);
+  }
+}
+
 Future<void> _runAction(
   BuildContext context,
   Future<void> Function() action, {
@@ -561,19 +818,39 @@ Future<void> _runAction(
     if (!context.mounted) {
       return;
     }
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(successMessage)));
+    _showActionSuccess(context, successMessage);
   } catch (error) {
     if (!context.mounted) {
       return;
     }
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(content: Text(error.toString().replaceFirst('Bad state: ', ''))),
-      );
+    _showActionError(context, error);
   }
+}
+
+void _showActionSuccess(BuildContext context, String message) {
+  if (!context.mounted) {
+    return;
+  }
+  ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(content: Text(message)));
+}
+
+void _showActionError(BuildContext context, Object error) {
+  if (!context.mounted) {
+    return;
+  }
+  ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(
+      SnackBar(content: Text(error.toString().replaceFirst('Bad state: ', ''))),
+    );
+}
+
+String _planDayLabel(PlanDay day) {
+  return day.routineName == null
+      ? day.weekday.displayName
+      : '${day.weekday.displayName} · ${day.routineName}';
 }
 
 class _StrengthTemplateSheet extends StatefulWidget {
@@ -672,6 +949,84 @@ class _StrengthTemplateSheetState extends State<_StrengthTemplateSheet> {
         targetSets: sets,
         targetReps: reps,
       ),
+    );
+  }
+}
+
+class ExerciseTransferSheet extends StatelessWidget {
+  const ExerciseTransferSheet({
+    required this.title,
+    required this.subtitle,
+    required this.targetDays,
+    required this.onSelectDay,
+    super.key,
+  });
+
+  final String title;
+  final String subtitle;
+  final List<PlanDay> targetDays;
+  final ValueChanged<PlanDay> onSelectDay;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppBottomSheetScaffold(
+      title: title,
+      subtitle: subtitle,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final day in targetDays) ...[
+            AppInteractiveSurface(
+              onTap: () => onSelectDay(day),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _planDayLabel(day),
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: AppSpacing.xs),
+                        Text(
+                          'Target day for this template action.',
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.md),
+                  const Icon(Icons.arrow_forward_ios_rounded, size: 18),
+                ],
+              ),
+            ),
+            const SizedBox(height: AppSpacing.md),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class StrengthSetTrimConfirmDialog extends StatelessWidget {
+  const StrengthSetTrimConfirmDialog({
+    required this.conflict,
+    super.key,
+    this.onConfirm,
+  });
+
+  final StrengthSetReductionConflict conflict;
+  final VoidCallback? onConfirm;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppConfirmDialog(
+      title: 'Trim saved set logs?',
+      description:
+          '${conflict.toString()} Confirm to keep the first ${conflict.keepSets} planned sets and discard the overflow logs.',
+      confirmLabel: 'Trim and save',
+      onConfirm: onConfirm,
     );
   }
 }
