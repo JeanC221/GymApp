@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:isar/isar.dart';
 import 'package:smartfit/core/data/isar/smartfit_isar.dart';
 import 'package:smartfit/core/data/repositories/isar_schedule_repository.dart';
 import 'package:smartfit/core/data/repositories/isar_settings_repository.dart';
@@ -15,11 +16,13 @@ class AppBootstrap {
     required this.scheduleRepository,
     required this.workoutRepository,
     required this.settingsRepository,
+    this.isar,
   });
 
   final ScheduleRepository scheduleRepository;
   final WorkoutRepository workoutRepository;
   final SettingsRepository settingsRepository;
+  final Isar? isar;
 }
 
 final appBootstrapProvider = FutureProvider<AppBootstrap>((ref) async {
@@ -42,5 +45,6 @@ final appBootstrapProvider = FutureProvider<AppBootstrap>((ref) async {
     scheduleRepository: scheduleRepository,
     workoutRepository: workoutRepository,
     settingsRepository: settingsRepository,
+    isar: isar,
   );
 });
