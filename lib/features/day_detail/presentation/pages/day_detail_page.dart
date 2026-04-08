@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:smartfit/app/theme/tokens/app_breakpoints.dart';
 import 'package:smartfit/app/theme/tokens/app_spacing.dart';
 import 'package:smartfit/core/domain/entities/plan_day.dart';
 import 'package:smartfit/core/domain/entities/strength_set_log.dart';
@@ -15,6 +16,7 @@ import 'package:smartfit/features/shared/presentation/widgets/app_error_state.da
 import 'package:smartfit/features/shared/presentation/widgets/app_icon_capsule_button.dart';
 import 'package:smartfit/features/shared/presentation/widgets/app_interactive_surface.dart';
 import 'package:smartfit/features/shared/presentation/widgets/app_primary_button.dart';
+import 'package:smartfit/features/shared/presentation/widgets/app_secondary_button.dart';
 import 'package:smartfit/features/shared/presentation/widgets/cardio_exercise_card.dart';
 import 'package:smartfit/features/shared/presentation/widgets/strength_exercise_card.dart';
 
@@ -71,93 +73,196 @@ class DayDetailPage extends ConsumerWidget {
               onPressed: () => context.pop(),
             ),
           ],
-          child: ListView(
-            children: [
-              _SessionHeader(
-                state: state,
-                onStartSession: state.isTrainingDay
-                    ? () => _runAction(
-                          context,
-                          () => controller.startTodaySession(),
-                          successMessage: 'Today session started.',
-                        )
-                    : null,
-                onCompleteSession: state.isTrainingDay
-                    ? () => _runAction(
-                          context,
-                          () => controller.completeTodaySession(),
-                          successMessage: 'Today session marked as completed.',
-                        )
-                    : null,
-              ),
-              const SizedBox(height: AppSpacing.xl),
-              if (state.isRestDay)
-                const AppEmptyState(
-                  title: 'Rest day',
-                  description: 'This day intentionally has no exercise templates or session logging.',
-                )
-              else ...[
-                Row(
-                  children: [
-                    Expanded(
-                      child: AppPrimaryButton(
-                        label: 'Add strength',
-                        icon: Icons.fitness_center,
-                        onPressed: () => _showStrengthTemplateSheet(
-                          context,
-                          onSave: (draft) => _runAction(
-                            context,
-                            () => controller.addStrengthExercise(
-                              displayName: draft.displayName,
-                              targetSets: draft.targetSets,
-                              targetReps: draft.targetReps,
-                            ),
-                            successMessage: 'Strength exercise added.',
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: AppSpacing.md),
-                    Expanded(
-                      child: AppPrimaryButton(
-                        label: 'Add cardio',
-                        icon: Icons.directions_run_rounded,
-                        onPressed: () => _showCardioTemplateSheet(
-                          context,
-                          onSave: (draft) => _runAction(
-                            context,
-                            () => controller.addCardioExercise(
-                              displayName: draft.displayName,
-                              cardioType: draft.cardioType,
-                              durationMinutes: draft.durationMinutes,
-                              incline: draft.incline,
-                            ),
-                            successMessage: 'Cardio block added.',
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: AppSpacing.xl),
-                if (!state.hasExercises)
-                  const AppEmptyState(
-                    title: 'No exercises yet',
-                    description: 'Add planned strength or cardio blocks before you start logging the real session.',
-                  )
-                else ...[
-                  _ExerciseReorderList(
-                    state: state,
-                    controller: controller,
-                  ),
-                  const SizedBox(height: AppSpacing.xl),
-                ],
-              ],
-            ],
+          child: _DayDetailContent(
+            state: state,
+            controller: controller,
           ),
         );
       },
     );
+  }
+}
+
+class _DayDetailContent extends StatelessWidget {
+  const _DayDetailContent({
+    required this.state,
+    required this.controller,
+  });
+
+  final DayDetailState state;
+  final DayDetailController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isTablet = constraints.maxWidth >= AppBreakpoints.medium;
+        final onStartSession = state.isTrainingDay
+            ? () => _runAction(
+                  context,
+                  () => controller.startTodaySession(),
+                  successMessage: 'Today session started.',
+                )
+            : null;
+        final onCompleteSession = state.isTrainingDay
+            ? () => _runAction(
+                  context,
+                  () => controller.completeTodaySession(),
+                  successMessage: 'Today session marked as completed.',
+                )
+            : null;
+        final sections = _buildMainSections(
+          context,
+          onStartSession: onStartSession,
+          onCompleteSession: onCompleteSession,
+        );
+
+        if (!isTablet) {
+          return ListView(children: sections);
+        }
+
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: ListView(children: sections)),
+            const SizedBox(width: AppSpacing.xl),
+            SizedBox(
+              width: 320,
+              child: SingleChildScrollView(
+                child: _DayInspectorPanel(
+                  state: state,
+                  onStartSession: onStartSession,
+                  onCompleteSession: onCompleteSession,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  List<Widget> _buildMainSections(
+    BuildContext context, {
+    required VoidCallback? onStartSession,
+    required VoidCallback? onCompleteSession,
+  }) {
+    return [
+      _SessionHeader(
+        state: state,
+        onStartSession: onStartSession,
+        onCompleteSession: onCompleteSession,
+      ),
+      const SizedBox(height: AppSpacing.xl),
+      if (state.isRestDay)
+        const AppEmptyState(
+          title: 'Rest day',
+          description: 'This day intentionally has no exercise templates or session logging.',
+        )
+      else ...[
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final shouldStack = constraints.maxWidth < AppBreakpoints.compact;
+            if (shouldStack) {
+              return Column(
+                children: [
+                  AppPrimaryButton(
+                    label: 'Add strength',
+                    icon: Icons.fitness_center,
+                    onPressed: () => _showStrengthTemplateSheet(
+                      context,
+                      onSave: (draft) => _runAction(
+                        context,
+                        () => controller.addStrengthExercise(
+                          displayName: draft.displayName,
+                          targetSets: draft.targetSets,
+                          targetReps: draft.targetReps,
+                        ),
+                        successMessage: 'Strength exercise added.',
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  AppPrimaryButton(
+                    label: 'Add cardio',
+                    icon: Icons.directions_run_rounded,
+                    onPressed: () => _showCardioTemplateSheet(
+                      context,
+                      onSave: (draft) => _runAction(
+                        context,
+                        () => controller.addCardioExercise(
+                          displayName: draft.displayName,
+                          cardioType: draft.cardioType,
+                          durationMinutes: draft.durationMinutes,
+                          incline: draft.incline,
+                        ),
+                        successMessage: 'Cardio block added.',
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            }
+
+            return Row(
+              children: [
+                Expanded(
+                  child: AppPrimaryButton(
+                    label: 'Add strength',
+                    icon: Icons.fitness_center,
+                    onPressed: () => _showStrengthTemplateSheet(
+                      context,
+                      onSave: (draft) => _runAction(
+                        context,
+                        () => controller.addStrengthExercise(
+                          displayName: draft.displayName,
+                          targetSets: draft.targetSets,
+                          targetReps: draft.targetReps,
+                        ),
+                        successMessage: 'Strength exercise added.',
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.md),
+                Expanded(
+                  child: AppPrimaryButton(
+                    label: 'Add cardio',
+                    icon: Icons.directions_run_rounded,
+                    onPressed: () => _showCardioTemplateSheet(
+                      context,
+                      onSave: (draft) => _runAction(
+                        context,
+                        () => controller.addCardioExercise(
+                          displayName: draft.displayName,
+                          cardioType: draft.cardioType,
+                          durationMinutes: draft.durationMinutes,
+                          incline: draft.incline,
+                        ),
+                        successMessage: 'Cardio block added.',
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+        const SizedBox(height: AppSpacing.xl),
+        if (!state.hasExercises)
+          const AppEmptyState(
+            title: 'No exercises yet',
+            description: 'Add planned strength or cardio blocks before you start logging the real session.',
+          )
+        else ...[
+          _ExerciseReorderList(
+            state: state,
+            controller: controller,
+          ),
+          const SizedBox(height: AppSpacing.xl),
+        ],
+      ],
+    ];
   }
 }
 
@@ -229,6 +334,7 @@ class _StrengthExerciseSection extends StatelessWidget {
     required this.onEdit,
     required this.onDelete,
     required this.onLog,
+    this.surfaceState = AppSurfaceState.idle,
     this.onMoveToDay,
     this.onCopyToDay,
   });
@@ -237,6 +343,7 @@ class _StrengthExerciseSection extends StatelessWidget {
   final VoidCallback onEdit;
   final VoidCallback onDelete;
   final VoidCallback onLog;
+  final AppSurfaceState surfaceState;
   final VoidCallback? onMoveToDay;
   final VoidCallback? onCopyToDay;
 
@@ -252,6 +359,7 @@ class _StrengthExerciseSection extends StatelessWidget {
           lastWeightSummary: item.lastUsedWeight == null
               ? 'Last used: none yet'
               : 'Last used: ${item.lastUsedWeight!.toStringAsFixed(item.lastUsedWeight! % 1 == 0 ? 0 : 1)} kg',
+          state: surfaceState,
           onTap: onLog,
         ),
         const SizedBox(height: AppSpacing.sm),
@@ -303,6 +411,7 @@ class _CardioExerciseSection extends StatelessWidget {
     required this.onEditTemplate,
     required this.onDeleteExercise,
     required this.onLog,
+    this.surfaceState = AppSurfaceState.idle,
     this.onMoveToDay,
     this.onCopyToDay,
     this.onDeleteLog,
@@ -312,6 +421,7 @@ class _CardioExerciseSection extends StatelessWidget {
   final VoidCallback onEditTemplate;
   final VoidCallback onDeleteExercise;
   final VoidCallback onLog;
+  final AppSurfaceState surfaceState;
   final VoidCallback? onMoveToDay;
   final VoidCallback? onCopyToDay;
   final VoidCallback? onDeleteLog;
@@ -331,6 +441,7 @@ class _CardioExerciseSection extends StatelessWidget {
               ? 'Manual cardio block'
               : '${item.cardioTemplate!.defaultDurationMinutes} min block',
           detailSummary: loggedSummary,
+          state: surfaceState,
           onTap: onLog,
         ),
         const SizedBox(height: AppSpacing.md),
@@ -390,7 +501,7 @@ class StrengthExerciseTemplateDraft {
   final int targetReps;
 }
 
-class _ExerciseReorderList extends StatelessWidget {
+class _ExerciseReorderList extends StatefulWidget {
   const _ExerciseReorderList({
     required this.state,
     required this.controller,
@@ -400,12 +511,21 @@ class _ExerciseReorderList extends StatelessWidget {
   final DayDetailController controller;
 
   @override
+  State<_ExerciseReorderList> createState() => _ExerciseReorderListState();
+}
+
+class _ExerciseReorderListState extends State<_ExerciseReorderList> {
+  int? draggingIndex;
+
+  @override
   Widget build(BuildContext context) {
     return ReorderableListView.builder(
       shrinkWrap: true,
       buildDefaultDragHandles: false,
       physics: const NeverScrollableScrollPhysics(),
-      itemCount: state.exercises.length,
+      onReorderStart: (index) => setState(() => draggingIndex = index),
+      onReorderEnd: (index) => setState(() => draggingIndex = null),
+      itemCount: widget.state.exercises.length,
       proxyDecorator: (child, index, animation) {
         return Material(
           color: Colors.transparent,
@@ -420,27 +540,32 @@ class _ExerciseReorderList extends StatelessWidget {
         if (newIndex > oldIndex) {
           targetIndex -= 1;
         }
+        setState(() => draggingIndex = null);
         _runAction(
           context,
-          () => controller.reorderExercise(
-            exerciseId: state.exercises[oldIndex].exercise.id,
+          () => widget.controller.reorderExercise(
+            exerciseId: widget.state.exercises[oldIndex].exercise.id,
             targetIndex: targetIndex,
           ),
           successMessage: 'Exercise order updated.',
         );
       },
       itemBuilder: (context, index) {
-        final item = state.exercises[index];
+        final item = widget.state.exercises[index];
+        final isDragging = draggingIndex == index;
         return Padding(
           key: ValueKey(item.exercise.id),
           padding: EdgeInsets.only(
-            bottom: index == state.exercises.length - 1 ? 0 : AppSpacing.xl,
+            bottom: index == widget.state.exercises.length - 1 ? 0 : AppSpacing.xl,
           ),
           child: _ExerciseReorderItem(
             index: index,
+            isDragging: isDragging,
+            isDropTarget: draggingIndex != null && !isDragging,
             child: item.type == ExerciseType.strength
                 ? _StrengthExerciseSection(
                     item: item,
+                    surfaceState: isDragging ? AppSurfaceState.dragging : AppSurfaceState.idle,
                     onEdit: () => _showStrengthTemplateSheet(
                       context,
                       initialDraft: StrengthExerciseTemplateDraft(
@@ -450,7 +575,7 @@ class _ExerciseReorderList extends StatelessWidget {
                       ),
                       onSave: (draft) => _runStrengthTemplateAction(
                         context,
-                        action: (trimOverflowLogs) => controller.updateStrengthExercise(
+                        action: (trimOverflowLogs) => widget.controller.updateStrengthExercise(
                           exercise: item.exercise,
                           template: item.strengthTemplate!,
                           displayName: draft.displayName,
@@ -463,17 +588,17 @@ class _ExerciseReorderList extends StatelessWidget {
                     ),
                     onDelete: () => _confirmDeleteExercise(
                       context,
-                      onDelete: () => controller.deleteExercise(item.exercise.id),
+                      onDelete: () => widget.controller.deleteExercise(item.exercise.id),
                     ),
-                    onMoveToDay: state.hasTransferTargets
+                    onMoveToDay: widget.state.hasTransferTargets
                         ? () => _showExerciseTransferSheet(
                               context,
                               title: 'Move exercise',
                               subtitle: 'Move this exercise template to another training day and keep the weekly order stable.',
-                              targetDays: state.transferTargets,
+                              targetDays: widget.state.transferTargets,
                               onSelect: (targetDay) => _runAction(
                                 context,
-                                () => controller.moveExerciseToDay(
+                                () => widget.controller.moveExerciseToDay(
                                   item: item,
                                   targetDayId: targetDay.id,
                                 ),
@@ -481,15 +606,15 @@ class _ExerciseReorderList extends StatelessWidget {
                               ),
                             )
                         : null,
-                    onCopyToDay: state.hasTransferTargets
+                    onCopyToDay: widget.state.hasTransferTargets
                         ? () => _showExerciseTransferSheet(
                               context,
                               title: 'Copy exercise',
                               subtitle: 'Create a new copy of this exercise template in another training day.',
-                              targetDays: state.transferTargets,
+                              targetDays: widget.state.transferTargets,
                               onSelect: (targetDay) => _runAction(
                                 context,
-                                () => controller.copyExerciseToDay(
+                                () => widget.controller.copyExerciseToDay(
                                   item: item,
                                   targetDayId: targetDay.id,
                                 ),
@@ -502,7 +627,7 @@ class _ExerciseReorderList extends StatelessWidget {
                       item,
                       onSave: (drafts) => _runAction(
                         context,
-                        () => controller.saveStrengthLogs(
+                        () => widget.controller.saveStrengthLogs(
                           exercise: item.exercise,
                           drafts: drafts,
                         ),
@@ -512,6 +637,7 @@ class _ExerciseReorderList extends StatelessWidget {
                   )
                 : _CardioExerciseSection(
                     item: item,
+                    surfaceState: isDragging ? AppSurfaceState.dragging : AppSurfaceState.idle,
                     onEditTemplate: () => _showCardioTemplateSheet(
                       context,
                       initialDraft: CardioExerciseTemplateDraft(
@@ -522,7 +648,7 @@ class _ExerciseReorderList extends StatelessWidget {
                       ),
                       onSave: (draft) => _runAction(
                         context,
-                        () => controller.updateCardioExercise(
+                        () => widget.controller.updateCardioExercise(
                           exercise: item.exercise,
                           template: item.cardioTemplate!,
                           displayName: draft.displayName,
@@ -535,17 +661,17 @@ class _ExerciseReorderList extends StatelessWidget {
                     ),
                     onDeleteExercise: () => _confirmDeleteExercise(
                       context,
-                      onDelete: () => controller.deleteExercise(item.exercise.id),
+                      onDelete: () => widget.controller.deleteExercise(item.exercise.id),
                     ),
-                    onMoveToDay: state.hasTransferTargets
+                    onMoveToDay: widget.state.hasTransferTargets
                         ? () => _showExerciseTransferSheet(
                               context,
                               title: 'Move cardio block',
                               subtitle: 'Move this planned cardio block to another training day.',
-                              targetDays: state.transferTargets,
+                              targetDays: widget.state.transferTargets,
                               onSelect: (targetDay) => _runAction(
                                 context,
-                                () => controller.moveExerciseToDay(
+                                () => widget.controller.moveExerciseToDay(
                                   item: item,
                                   targetDayId: targetDay.id,
                                 ),
@@ -553,15 +679,15 @@ class _ExerciseReorderList extends StatelessWidget {
                               ),
                             )
                         : null,
-                    onCopyToDay: state.hasTransferTargets
+                    onCopyToDay: widget.state.hasTransferTargets
                         ? () => _showExerciseTransferSheet(
                               context,
                               title: 'Copy cardio block',
                               subtitle: 'Create a new cardio block copy in another training day.',
-                              targetDays: state.transferTargets,
+                              targetDays: widget.state.transferTargets,
                               onSelect: (targetDay) => _runAction(
                                 context,
-                                () => controller.copyExerciseToDay(
+                                () => widget.controller.copyExerciseToDay(
                                   item: item,
                                   targetDayId: targetDay.id,
                                 ),
@@ -574,7 +700,7 @@ class _ExerciseReorderList extends StatelessWidget {
                       item,
                       onSave: (draft) => _runAction(
                         context,
-                        () => controller.saveCardioLog(
+                        () => widget.controller.saveCardioLog(
                           exercise: item.exercise,
                           cardioType: draft.cardioType,
                           durationMinutes: draft.durationMinutes,
@@ -587,7 +713,7 @@ class _ExerciseReorderList extends StatelessWidget {
                         ? null
                         : () => _runAction(
                               context,
-                              () => controller.deleteCardioLog(item.exercise.id),
+                              () => widget.controller.deleteCardioLog(item.exercise.id),
                               successMessage: 'Cardio log removed.',
                             ),
                   ),
@@ -602,33 +728,165 @@ class _ExerciseReorderItem extends StatelessWidget {
   const _ExerciseReorderItem({
     required this.index,
     required this.child,
+    required this.isDragging,
+    required this.isDropTarget,
   });
 
   final int index;
   final Widget child;
+  final bool isDragging;
+  final bool isDropTarget;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                'Drag to reorder',
-                style: Theme.of(context).textTheme.labelLarge,
+        AppInteractiveSurface(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.md,
+            vertical: AppSpacing.sm,
+          ),
+          state: isDragging
+              ? AppSurfaceState.dragging
+              : isDropTarget
+                  ? AppSurfaceState.dropTarget
+                  : AppSurfaceState.idle,
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  isDragging ? 'Dragging exercise' : isDropTarget ? 'Drop exercise here' : 'Drag to reorder',
+                  style: Theme.of(context).textTheme.labelLarge,
+                ),
               ),
-            ),
-            ReorderableDelayedDragStartListener(
-              index: index,
-              child: const Icon(Icons.drag_indicator_rounded),
-            ),
-          ],
+              ReorderableDelayedDragStartListener(
+                index: index,
+                child: const Icon(Icons.drag_indicator_rounded),
+              ),
+            ],
+          ),
         ),
         const SizedBox(height: AppSpacing.sm),
         child,
       ],
+    );
+  }
+}
+
+class _DayInspectorPanel extends StatelessWidget {
+  const _DayInspectorPanel({
+    required this.state,
+    this.onStartSession,
+    this.onCompleteSession,
+  });
+
+  final DayDetailState state;
+  final VoidCallback? onStartSession;
+  final VoidCallback? onCompleteSession;
+
+  @override
+  Widget build(BuildContext context) {
+    final completedStrengthSets = state.exercises.fold<int>(
+      0,
+      (count, item) => count + item.completedStrengthSets,
+    );
+    final loggedCardioBlocks = state.exercises.where((item) => item.cardioLog != null).length;
+    final sessionStatus = switch (state.todaySession?.sessionStatus) {
+      WorkoutSessionStatus.inProgress => 'In progress',
+      WorkoutSessionStatus.completed => 'Completed',
+      WorkoutSessionStatus.skipped => 'Skipped',
+      WorkoutSessionStatus.pending => 'Pending',
+      null => 'Not started',
+    };
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        AppInteractiveSurface(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Day inspector', style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: AppSpacing.sm),
+              Text(sessionStatus, style: Theme.of(context).textTheme.headlineMedium),
+              const SizedBox(height: AppSpacing.sm),
+              Text(
+                state.isTrainingDay
+                    ? 'Use the side panel to keep session context visible while editing templates and logs.'
+                    : 'Rest days stay visible in the schedule but keep exercise editing disabled.',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              if (state.isTrainingDay) ...[
+                const SizedBox(height: AppSpacing.lg),
+                AppPrimaryButton(
+                  label: state.todaySession == null ? 'Start session' : 'Resume session',
+                  onPressed: onStartSession,
+                ),
+                const SizedBox(height: AppSpacing.md),
+                AppSecondaryButton(
+                  label: 'Complete session',
+                  onPressed: onCompleteSession,
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: AppSpacing.lg),
+        AppInteractiveSurface(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Template summary', style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: AppSpacing.md),
+              _InspectorMetricRow(label: 'Planned blocks', value: '${state.exercises.length}'),
+              _InspectorMetricRow(label: 'Completed sets today', value: '$completedStrengthSets'),
+              _InspectorMetricRow(label: 'Logged cardio blocks', value: '$loggedCardioBlocks'),
+              _InspectorMetricRow(label: 'Transfer targets', value: '${state.transferTargets.length}'),
+            ],
+          ),
+        ),
+        const SizedBox(height: AppSpacing.lg),
+        AppInteractiveSurface(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Editing cues', style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: AppSpacing.sm),
+              Text(
+                state.hasExercises
+                    ? 'Drag handles lift the active card and highlight valid drop zones while you reorder the template.'
+                    : 'Once planned blocks exist, tablet keeps your editing context and session summary side by side.',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _InspectorMetricRow extends StatelessWidget {
+  const _InspectorMetricRow({
+    required this.label,
+    required this.value,
+  });
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+      child: Row(
+        children: [
+          Expanded(child: Text(label, style: Theme.of(context).textTheme.bodyMedium)),
+          const SizedBox(width: AppSpacing.md),
+          Text(value, style: Theme.of(context).textTheme.titleMedium),
+        ],
+      ),
     );
   }
 }

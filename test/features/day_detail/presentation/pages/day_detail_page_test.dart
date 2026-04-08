@@ -26,6 +26,33 @@ import 'package:smartfit/features/day_detail/presentation/pages/day_detail_page.
 
 void main() {
   group('DayDetailPage', () {
+    testWidgets('tablet layout shows the day inspector sidebar', (tester) async {
+      await _setSurfaceSize(tester, const Size(1200, 1600));
+
+      final scheduleRepository = _MemoryScheduleRepository();
+      final workoutRepository = _MemoryWorkoutRepository();
+      scheduleRepository.seedPlanDay(_trainingDay('day_1', Weekday.monday, 0, 'Push'));
+      scheduleRepository.seedPlanDay(_trainingDay('day_2', Weekday.tuesday, 1, 'Pull'));
+      scheduleRepository.seedStrengthExercise(
+        dayId: 'day_1',
+        exerciseId: 'exercise_1',
+        displayName: 'Bench Press',
+        orderIndex: 0,
+        targetSets: 4,
+        targetReps: 8,
+      );
+
+      await _pumpDayDetailPage(
+        tester,
+        scheduleRepository: scheduleRepository,
+        workoutRepository: workoutRepository,
+      );
+
+      expect(find.text('Day inspector'), findsOneWidget);
+      expect(find.text('Template summary'), findsOneWidget);
+      expect(find.text('Editing cues'), findsOneWidget);
+    });
+
     testWidgets('move transfer sheet renders training targets and returns selection', (
       tester,
     ) async {
@@ -509,4 +536,14 @@ class _MemorySettingsRepository implements SettingsRepository {
 
   @override
   Future<void> saveSettings(AppSettings settings) async {}
+}
+
+Future<void> _setSurfaceSize(WidgetTester tester, Size size) async {
+  tester.view.physicalSize = size;
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(() {
+    tester.view.resetPhysicalSize();
+    tester.view.resetDevicePixelRatio();
+  });
+  await tester.pump();
 }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:smartfit/app/theme/app_theme.dart';
+import 'package:smartfit/app/theme/tokens/app_breakpoints.dart';
 import 'package:smartfit/app/theme/tokens/app_spacing.dart';
 
 class AppPageScaffold extends StatelessWidget {
@@ -22,24 +23,46 @@ class AppPageScaffold extends StatelessWidget {
       child: Center(
         child: ConstrainedBox(
           constraints: BoxConstraints(maxWidth: surface.maxContentWidth),
-          child: Padding(
-            padding: const EdgeInsets.all(AppSpacing.page),
-            child: Column(
-              children: [
-                if (header != null || actions.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: AppSpacing.xl),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(child: header ?? const SizedBox.shrink()),
-                        if (actions.isNotEmpty) ...actions,
-                      ],
-                    ),
-          ),
-                Expanded(child: child),
-              ],
-            ),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final shouldStackHeader = constraints.maxWidth < AppBreakpoints.compact;
+
+              return Padding(
+                padding: const EdgeInsets.all(AppSpacing.page),
+                child: Column(
+                  children: [
+                    if (header != null || actions.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: AppSpacing.xl),
+                        child: shouldStackHeader
+                            ? Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                    // ignore: use_null_aware_elements
+                                    if (header != null) header!,
+                                  if (actions.isNotEmpty) ...[
+                                    const SizedBox(height: AppSpacing.lg),
+                                    Wrap(
+                                      spacing: AppSpacing.md,
+                                      runSpacing: AppSpacing.md,
+                                      children: actions,
+                                    ),
+                                  ],
+                                ],
+                              )
+                            : Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(child: header ?? const SizedBox.shrink()),
+                                  if (actions.isNotEmpty) ...actions,
+                                ],
+                              ),
+                      ),
+                    Expanded(child: child),
+                  ],
+                ),
+              );
+            },
           ),
         ),
       ),

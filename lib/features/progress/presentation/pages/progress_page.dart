@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:smartfit/app/theme/tokens/app_breakpoints.dart';
 import 'package:smartfit/app/theme/tokens/app_spacing.dart';
 import 'package:smartfit/core/domain/enums/exercise_type.dart';
 import 'package:smartfit/core/domain/enums/progress_range.dart';
@@ -61,47 +62,96 @@ class _ProgressPageState extends ConsumerState<ProgressPage> {
         data: (overview) {
           final selectedExercise = _resolveSelectedExercise(overview);
 
-          return ListView(
-            children: [
-              AppSegmentedControl<String>(
-                value: selectedMode,
-                segments: const [
-                  AppSegment(value: 'exercise', label: 'Exercise', icon: Icons.fitness_center),
-                  AppSegment(value: 'overall', label: 'Overall', icon: Icons.insights_outlined),
+          return LayoutBuilder(
+            builder: (context, constraints) {
+              final isTablet = constraints.maxWidth >= AppBreakpoints.medium;
+
+              return ListView(
+                children: [
+                  if (isTablet)
+                    Row(
+                      children: [
+                        Expanded(
+                          child: AppSegmentedControl<String>(
+                            value: selectedMode,
+                            segments: const [
+                              AppSegment(value: 'exercise', label: 'Exercise', icon: Icons.fitness_center),
+                              AppSegment(value: 'overall', label: 'Overall', icon: Icons.insights_outlined),
+                            ],
+                            onChanged: (value) => setState(() => selectedMode = value),
+                          ),
+                        ),
+                        const SizedBox(width: AppSpacing.lg),
+                        Expanded(
+                          child: AppSegmentedControl<ProgressRange>(
+                            value: selectedRange,
+                            segments: const [
+                              AppSegment(value: ProgressRange.last30Days, label: '30 days'),
+                              AppSegment(value: ProgressRange.last8Weeks, label: '8 weeks'),
+                              AppSegment(value: ProgressRange.allTime, label: 'All time'),
+                            ],
+                            onChanged: (value) {
+                              setState(() {
+                                selectedRange = value;
+                                didHydratePreferredRange = true;
+                              });
+                              unawaited(
+                                ref
+                                    .read(progressPreferencesControllerProvider)
+                                    .savePreferredRange(value),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    )
+                  else ...[
+                    AppSegmentedControl<String>(
+                      value: selectedMode,
+                      segments: const [
+                        AppSegment(value: 'exercise', label: 'Exercise', icon: Icons.fitness_center),
+                        AppSegment(value: 'overall', label: 'Overall', icon: Icons.insights_outlined),
+                      ],
+                      onChanged: (value) => setState(() => selectedMode = value),
+                    ),
+                    const SizedBox(height: AppSpacing.lg),
+                    AppSegmentedControl<ProgressRange>(
+                      value: selectedRange,
+                      segments: const [
+                        AppSegment(value: ProgressRange.last30Days, label: '30 days'),
+                        AppSegment(value: ProgressRange.last8Weeks, label: '8 weeks'),
+                        AppSegment(value: ProgressRange.allTime, label: 'All time'),
+                      ],
+                      onChanged: (value) {
+                        setState(() {
+                          selectedRange = value;
+                          didHydratePreferredRange = true;
+                        });
+                        unawaited(
+                          ref
+                              .read(progressPreferencesControllerProvider)
+                              .savePreferredRange(value),
+                        );
+                      },
+                    ),
+                  ],
+                  const SizedBox(height: AppSpacing.xl),
+                  if (selectedMode == 'exercise')
+                    _ExerciseProgressView(
+                      overview: overview,
+                      selectedExercise: selectedExercise,
+                      selectedExerciseId: selectedExerciseId,
+                      onExerciseChanged: (value) => setState(() => selectedExerciseId = value),
+                      isTablet: isTablet,
+                    )
+                  else
+                    _OverallProgressView(
+                      overview: overview,
+                      isTablet: isTablet,
+                    ),
                 ],
-                onChanged: (value) => setState(() => selectedMode = value),
-              ),
-              const SizedBox(height: AppSpacing.lg),
-              AppSegmentedControl<ProgressRange>(
-                value: selectedRange,
-                segments: const [
-                  AppSegment(value: ProgressRange.last30Days, label: '30 days'),
-                  AppSegment(value: ProgressRange.last8Weeks, label: '8 weeks'),
-                  AppSegment(value: ProgressRange.allTime, label: 'All time'),
-                ],
-                onChanged: (value) {
-                  setState(() {
-                    selectedRange = value;
-                    didHydratePreferredRange = true;
-                  });
-                  unawaited(
-                    ref
-                        .read(progressPreferencesControllerProvider)
-                        .savePreferredRange(value),
-                  );
-                },
-              ),
-              const SizedBox(height: AppSpacing.xl),
-              if (selectedMode == 'exercise')
-                _ExerciseProgressView(
-                  overview: overview,
-                  selectedExercise: selectedExercise,
-                  selectedExerciseId: selectedExerciseId,
-                  onExerciseChanged: (value) => setState(() => selectedExerciseId = value),
-                )
-              else
-                _OverallProgressView(overview: overview),
-            ],
+              );
+            },
           );
         },
       ),
@@ -142,12 +192,14 @@ class _ExerciseProgressView extends StatelessWidget {
     required this.selectedExercise,
     required this.selectedExerciseId,
     required this.onExerciseChanged,
+    required this.isTablet,
   });
 
   final ProgressOverview overview;
   final ProgressExerciseHistory? selectedExercise;
   final String? selectedExerciseId;
   final ValueChanged<String?> onExerciseChanged;
+  final bool isTablet;
 
   @override
   Widget build(BuildContext context) {
@@ -168,70 +220,60 @@ class _ExerciseProgressView extends StatelessWidget {
       );
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        AppInteractiveSurface(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Tracked exercise', style: theme.textTheme.titleLarge),
-              const SizedBox(height: AppSpacing.md),
-              DropdownButtonFormField<String>(
-                initialValue: selectedExerciseId ?? history.exerciseId,
-                decoration: const InputDecoration(labelText: 'Exercise'),
-                items: [
-                  for (final item in overview.exerciseHistories)
-                    DropdownMenuItem(
-                      value: item.exerciseId,
-                      child: Text(item.optionLabel),
-                    ),
-                ],
-                onChanged: onExerciseChanged,
-              ),
-              const SizedBox(height: AppSpacing.md),
-              Text(history.dayLabel, style: theme.textTheme.bodyMedium),
+    final selectorCard = AppInteractiveSurface(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Tracked exercise', style: theme.textTheme.titleLarge),
+          const SizedBox(height: AppSpacing.md),
+          DropdownButtonFormField<String>(
+            initialValue: selectedExerciseId ?? history.exerciseId,
+            decoration: const InputDecoration(labelText: 'Exercise'),
+            items: [
+              for (final item in overview.exerciseHistories)
+                DropdownMenuItem(
+                  value: item.exerciseId,
+                  child: Text(item.optionLabel),
+                ),
             ],
+            onChanged: onExerciseChanged,
           ),
+          const SizedBox(height: AppSpacing.md),
+          Text(history.dayLabel, style: theme.textTheme.bodyMedium),
+        ],
+      ),
+    );
+
+    final metricsColumn = Column(
+      children: [
+        _ProgressMetricCard(
+          title: history.type == ExerciseType.strength
+              ? 'Last used reference'
+              : 'Logged cardio minutes',
+          value: history.type == ExerciseType.strength
+              ? (history.lastUsedWeight == null
+                  ? 'None yet'
+                  : '${_formatDouble(history.lastUsedWeight!)} ${overview.weightUnit.name}')
+              : '${history.totalCardioMinutes}',
+          subtitle: history.type == ExerciseType.strength
+              ? 'Real completed weight only. Never auto-filled into sessions.'
+              : 'Total logged duration inside the selected range.',
         ),
-        const SizedBox(height: AppSpacing.xl),
-        Wrap(
-          spacing: AppSpacing.lg,
-          runSpacing: AppSpacing.lg,
-          children: [
-            SizedBox(
-              width: 320,
-              child: _ProgressMetricCard(
-                title: history.type == ExerciseType.strength
-                    ? 'Last used reference'
-                    : 'Logged cardio minutes',
-                value: history.type == ExerciseType.strength
-                    ? (history.lastUsedWeight == null
-                        ? 'None yet'
-                        : '${_formatDouble(history.lastUsedWeight!)} ${overview.weightUnit.name}')
-                    : '${history.totalCardioMinutes}',
-                subtitle: history.type == ExerciseType.strength
-                    ? 'Real completed weight only. Never auto-filled into sessions.'
-                    : 'Total logged duration inside the selected range.',
-              ),
-            ),
-            SizedBox(
-              width: 320,
-              child: _ProgressMetricCard(
-                title: history.type == ExerciseType.strength
-                    ? 'Completed sets'
-                    : 'Logged entries',
-                value: history.type == ExerciseType.strength
-                    ? '${history.completedStrengthSets}'
-                    : '${history.series.length}',
-                subtitle: '${_rangeLabel(overview.range)} of real history.',
-              ),
-            ),
-          ],
+        const SizedBox(height: AppSpacing.lg),
+        _ProgressMetricCard(
+          title: history.type == ExerciseType.strength
+              ? 'Completed sets'
+              : 'Logged entries',
+          value: history.type == ExerciseType.strength
+              ? '${history.completedStrengthSets}'
+              : '${history.series.length}',
+          subtitle: '${_rangeLabel(overview.range)} of real history.',
         ),
-        const SizedBox(height: AppSpacing.xl),
-        if (!history.hasHistory)
-          AppEmptyState(
+      ],
+    );
+
+    final historySection = !history.hasHistory
+        ? AppEmptyState(
             title: history.type == ExerciseType.strength
                 ? 'No strength history yet'
                 : 'No cardio history yet',
@@ -239,8 +281,7 @@ class _ExerciseProgressView extends StatelessWidget {
                 ? 'Complete some weighted sets for this exercise to see trend data.'
                 : 'Log some cardio blocks for this exercise to see duration trends.',
           )
-        else
-          ProgressChartCard(
+        : ProgressChartCard(
             title: history.type == ExerciseType.strength
                 ? '${history.displayName} progress'
                 : '${history.displayName} cardio volume',
@@ -251,16 +292,49 @@ class _ExerciseProgressView extends StatelessWidget {
               for (final point in history.series)
                 ProgressChartBar(label: point.label, value: point.value),
             ],
+          );
+
+    if (isTablet) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                selectorCard,
+                const SizedBox(height: AppSpacing.xl),
+                historySection,
+              ],
+            ),
           ),
+          const SizedBox(width: AppSpacing.xl),
+          SizedBox(width: 320, child: metricsColumn),
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        selectorCard,
+        const SizedBox(height: AppSpacing.xl),
+        metricsColumn,
+        const SizedBox(height: AppSpacing.xl),
+        historySection,
       ],
     );
   }
 }
 
 class _OverallProgressView extends StatelessWidget {
-  const _OverallProgressView({required this.overview});
+  const _OverallProgressView({
+    required this.overview,
+    required this.isTablet,
+  });
 
   final ProgressOverview overview;
+  final bool isTablet;
 
   @override
   Widget build(BuildContext context) {
@@ -271,69 +345,112 @@ class _OverallProgressView extends StatelessWidget {
       );
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Wrap(
-          spacing: AppSpacing.lg,
-          runSpacing: AppSpacing.lg,
-          children: [
-            SizedBox(
-              width: 280,
-              child: _ProgressMetricCard(
-                title: 'Completed sessions',
-                value: '${overview.completedSessionCount}',
-                subtitle: _rangeLabel(overview.range),
+    final metrics = isTablet
+        ? Row(
+            children: [
+              Expanded(
+                child: _ProgressMetricCard(
+                  title: 'Completed sessions',
+                  value: '${overview.completedSessionCount}',
+                  subtitle: _rangeLabel(overview.range),
+                ),
               ),
-            ),
-            SizedBox(
-              width: 280,
-              child: _ProgressMetricCard(
-                title: 'Completed strength sets',
-                value: '${overview.completedStrengthSetCount}',
-                subtitle: 'Completed set logs inside the selected range.',
+              const SizedBox(width: AppSpacing.lg),
+              Expanded(
+                child: _ProgressMetricCard(
+                  title: 'Completed strength sets',
+                  value: '${overview.completedStrengthSetCount}',
+                  subtitle: 'Completed set logs inside the selected range.',
+                ),
               ),
-            ),
-            SizedBox(
-              width: 280,
-              child: _ProgressMetricCard(
-                title: 'Cardio minutes',
-                value: '${overview.totalCardioMinutes}',
-                subtitle: 'Manual cardio logs inside the selected range.',
+              const SizedBox(width: AppSpacing.lg),
+              Expanded(
+                child: _ProgressMetricCard(
+                  title: 'Cardio minutes',
+                  value: '${overview.totalCardioMinutes}',
+                  subtitle: 'Manual cardio logs inside the selected range.',
+                ),
               ),
-            ),
-          ],
-        ),
-        const SizedBox(height: AppSpacing.xl),
-        if (overview.overallCompletedSessionSeries.isEmpty)
-          const AppEmptyState(
+            ],
+          )
+        : Wrap(
+            spacing: AppSpacing.lg,
+            runSpacing: AppSpacing.lg,
+            children: [
+              SizedBox(
+                width: 280,
+                child: _ProgressMetricCard(
+                  title: 'Completed sessions',
+                  value: '${overview.completedSessionCount}',
+                  subtitle: _rangeLabel(overview.range),
+                ),
+              ),
+              SizedBox(
+                width: 280,
+                child: _ProgressMetricCard(
+                  title: 'Completed strength sets',
+                  value: '${overview.completedStrengthSetCount}',
+                  subtitle: 'Completed set logs inside the selected range.',
+                ),
+              ),
+              SizedBox(
+                width: 280,
+                child: _ProgressMetricCard(
+                  title: 'Cardio minutes',
+                  value: '${overview.totalCardioMinutes}',
+                  subtitle: 'Manual cardio logs inside the selected range.',
+                ),
+              ),
+            ],
+          );
+
+    final completionSection = overview.overallCompletedSessionSeries.isEmpty
+        ? const AppEmptyState(
             title: 'No completed sessions in range',
             description: 'Mark sessions as completed to populate the overall completion chart.',
           )
-        else
-          ProgressChartCard(
+        : ProgressChartCard(
             title: 'Weekly completion',
             subtitle: 'Completed sessions per week',
             bars: [
               for (final point in overview.overallCompletedSessionSeries)
                 ProgressChartBar(label: point.label, value: point.value),
             ],
-          ),
-        const SizedBox(height: AppSpacing.xl),
-        if (overview.overallCardioMinuteSeries.isEmpty)
-          const AppEmptyState(
+          );
+
+    final cardioSection = overview.overallCardioMinuteSeries.isEmpty
+        ? const AppEmptyState(
             title: 'No cardio in range',
             description: 'Once cardio blocks are logged, SmartFit will chart weekly duration here.',
           )
-        else
-          ProgressChartCard(
+        : ProgressChartCard(
             title: 'Weekly cardio volume',
             subtitle: 'Total cardio minutes per week',
             bars: [
               for (final point in overview.overallCardioMinuteSeries)
                 ProgressChartBar(label: point.label, value: point.value),
             ],
-          ),
+          );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        metrics,
+        const SizedBox(height: AppSpacing.xl),
+        if (isTablet)
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: completionSection),
+              const SizedBox(width: AppSpacing.xl),
+              Expanded(child: cardioSection),
+            ],
+          )
+        else ...[
+          completionSection,
+          const SizedBox(height: AppSpacing.xl),
+          cardioSection,
+        ],
       ],
     );
   }
