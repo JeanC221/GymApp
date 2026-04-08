@@ -8,6 +8,8 @@ import 'package:smartfit/core/domain/repositories/schedule_repository.dart';
 import 'package:smartfit/core/domain/rules/plan_day_rules.dart';
 import 'package:smartfit/core/domain/rules/weekly_plan_rules.dart';
 
+final weekRefreshTickProvider = StateProvider<int>((ref) => 0);
+
 final weekControllerProvider =
     AsyncNotifierProvider<WeekController, WeekState>(WeekController.new);
 
@@ -45,6 +47,7 @@ class WeekController extends AsyncNotifier<WeekState> {
         ),
       );
 
+      _bumpRefreshTick();
       return _loadState(repositoryOverride: repository);
     });
   }
@@ -100,6 +103,7 @@ class WeekController extends AsyncNotifier<WeekState> {
         ),
       );
 
+      _bumpRefreshTick();
       return _loadState(repositoryOverride: repository);
     });
   }
@@ -109,6 +113,7 @@ class WeekController extends AsyncNotifier<WeekState> {
     state = await AsyncValue.guard(() async {
       final bootstrap = await ref.read(appBootstrapProvider.future);
       await bootstrap.scheduleRepository.deletePlanDay(dayId);
+      _bumpRefreshTick();
       return _loadState(repositoryOverride: bootstrap.scheduleRepository);
     });
   }
@@ -153,8 +158,13 @@ class WeekController extends AsyncNotifier<WeekState> {
       final moved = reordered.removeAt(currentIndex);
       reordered.insert(nextIndex, moved);
       await bootstrap.scheduleRepository.reorderPlanDays(reordered);
+      _bumpRefreshTick();
       return _loadState(repositoryOverride: bootstrap.scheduleRepository);
     });
+  }
+
+  void _bumpRefreshTick() {
+    ref.read(weekRefreshTickProvider.notifier).update((state) => state + 1);
   }
 
   Future<WeekState> _loadState({ScheduleRepository? repositoryOverride}) async {
