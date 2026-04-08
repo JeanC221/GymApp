@@ -3,8 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:smartfit/app/theme/tokens/app_spacing.dart';
 import 'package:smartfit/core/constants/app_constants.dart';
+import 'package:smartfit/core/domain/enums/exercise_type.dart';
 import 'package:smartfit/features/day_detail/presentation/pages/day_detail_page.dart';
+import 'package:smartfit/features/home/presentation/providers/home_progress_overview_provider.dart';
 import 'package:smartfit/features/home/presentation/providers/today_overview_provider.dart';
+import 'package:smartfit/features/progress/presentation/providers/progress_overview_provider.dart';
+import 'package:smartfit/features/progress/presentation/pages/progress_page.dart';
 import 'package:smartfit/features/shared/presentation/widgets/app_empty_state.dart';
 import 'package:smartfit/features/shared/presentation/widgets/app_error_state.dart';
 import 'package:smartfit/features/shared/presentation/layouts/app_page_scaffold.dart';
@@ -28,6 +32,7 @@ class HomePage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final todayAsync = ref.watch(todayOverviewProvider);
+    final progressAsync = ref.watch(homeProgressOverviewProvider);
 
     return AppPageScaffold(
       header: Column(
@@ -38,7 +43,7 @@ class HomePage extends ConsumerWidget {
           Text('Today', style: theme.textTheme.headlineMedium),
           const SizedBox(height: AppSpacing.sm),
           Text(
-            'A realistic shell for the current day, built with the Phase 3 component library before real feature wiring begins.',
+            'Today stays focused on the active plan, but it now pulls a real progress snapshot from your completed history too.',
             style: theme.textTheme.bodyMedium,
           ),
         ],
@@ -152,10 +157,126 @@ class HomePage extends ConsumerWidget {
                 const SizedBox(height: AppSpacing.lg),
               ],
             ],
+            const SizedBox(height: AppSpacing.xl),
+            _HomeProgressSection(progressAsync: progressAsync),
           ],
         ),
       ),
     );
+  }
+}
+
+class _HomeProgressSection extends StatelessWidget {
+  const _HomeProgressSection({required this.progressAsync});
+
+  final AsyncValue<ProgressOverview> progressAsync;
+
+  @override
+  Widget build(BuildContext context) {
+    return progressAsync.when(
+      loading: () => AppInteractiveSurface(
+        child: Row(
+          children: [
+            const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            const SizedBox(width: AppSpacing.md),
+            Expanded(
+              child: Text(
+                'Loading progress snapshot...',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ),
+          ],
+        ),
+      ),
+      error: (error, stackTrace) => AppInteractiveSurface(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Progress snapshot unavailable', style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              error.toString().replaceFirst('Bad state: ', ''),
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ],
+        ),
+      ),
+      data: (overview) {
+        final highlightedExercise = overview.defaultExerciseHistory;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Progress snapshot',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                ),
+                AppSecondaryButton(
+                  label: 'Open progress',
+                  icon: Icons.show_chart_rounded,
+                  onPressed: () => context.go(ProgressPage.routePath),
+                ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.md),
+            Wrap(
+              spacing: AppSpacing.lg,
+              runSpacing: AppSpacing.lg,
+              children: [
+                SizedBox(
+                  width: 320,
+                  child: _MetricCard(
+                    title: 'Completed sessions',
+                    value: '${overview.completedSessionCount}',
+                    subtitle:
+                        '${homeProgressRangeLabel(overview.range)} · ${overview.totalCardioMinutes} cardio min',
+                  ),
+                ),
+                SizedBox(
+                  width: 320,
+                  child: _MetricCard(
+                    title: highlightedExercise == null
+                        ? 'Tracked history'
+                        : (highlightedExercise.type == ExerciseType.strength
+                              ? 'Latest lift reference'
+                              : 'Tracked cardio block'),
+                    value: highlightedExercise == null
+                        ? 'No history yet'
+                      : _highlightedValue(overview, highlightedExercise),
+                    subtitle: highlightedExercise == null
+                        ? 'Finish some real sessions to unlock charts and history.'
+                        : highlightedExercise.optionLabel,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  String _highlightedValue(
+    ProgressOverview overview,
+    ProgressExerciseHistory highlightedExercise,
+  ) {
+    if (highlightedExercise.type == ExerciseType.strength) {
+      final lastUsedWeight = highlightedExercise.lastUsedWeight;
+      if (lastUsedWeight == null) {
+        return 'None yet';
+      }
+      return '${lastUsedWeight.toStringAsFixed(lastUsedWeight % 1 == 0 ? 0 : 1)} ${overview.weightUnit.name}';
+    }
+
+    return '${highlightedExercise.totalCardioMinutes} min';
   }
 }
 
