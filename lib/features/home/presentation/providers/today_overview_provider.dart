@@ -10,6 +10,7 @@ import 'package:smartfit/features/week/presentation/controllers/week_controller.
 
 final todayOverviewProvider = FutureProvider<TodayOverview>((ref) async {
   ref.watch(weekRefreshTickProvider);
+  ref.watch(workoutRefreshTickProvider);
 
   final bootstrap = await ref.watch(appBootstrapProvider.future);
   final scheduleRepository = bootstrap.scheduleRepository;
