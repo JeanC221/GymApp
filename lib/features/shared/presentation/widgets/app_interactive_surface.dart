@@ -6,7 +6,7 @@ import 'package:smartfit/app/theme/tokens/app_spacing.dart';
 
 enum AppSurfaceState { idle, pressed, dragging, dropTarget, disabled }
 
-class AppInteractiveSurface extends StatelessWidget {
+class AppInteractiveSurface extends StatefulWidget {
   const AppInteractiveSurface({
     required this.child,
     super.key,
@@ -27,65 +27,95 @@ class AppInteractiveSurface extends StatelessWidget {
   final Color? backgroundColor;
 
   @override
+  State<AppInteractiveSurface> createState() => _AppInteractiveSurfaceState();
+}
+
+class _AppInteractiveSurfaceState extends State<AppInteractiveSurface> {
+  bool isPressed = false;
+  bool isHovered = false;
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final surface = theme.extension<AppThemeSurface>()!;
+    final effectiveState = _effectiveState;
+    final canInteract = widget.state != AppSurfaceState.disabled && widget.onTap != null;
 
-    final effectiveBorder = switch (state) {
+    final effectiveBorder = switch (effectiveState) {
       AppSurfaceState.dropTarget => AppColors.accentStrong,
       AppSurfaceState.dragging => AppColors.info,
-      _ => borderColor ?? surface.outline,
+      _ => widget.borderColor ??
+          (isHovered && canInteract ? AppColors.info.withValues(alpha: 0.45) : surface.outline),
     };
 
-    final effectiveBackground = switch (state) {
+    final effectiveBackground = switch (effectiveState) {
       AppSurfaceState.dropTarget => AppColors.accentTint,
       AppSurfaceState.pressed => surface.secondarySurface,
-      _ => backgroundColor ?? theme.cardColor,
+      _ => widget.backgroundColor ??
+          (isHovered && canInteract
+              ? surface.secondarySurface.withValues(alpha: 0.55)
+              : theme.cardColor),
     };
 
-    final yOffset = switch (state) {
+    final yOffset = switch (effectiveState) {
       AppSurfaceState.pressed => 1.5,
       AppSurfaceState.dragging => -6.0,
       _ => 0.0,
     };
 
-    final scale = switch (state) {
+    final scale = switch (effectiveState) {
       AppSurfaceState.pressed => 0.99,
       AppSurfaceState.dragging => 1.02,
       _ => 1.0,
     };
 
-    final opacity = state == AppSurfaceState.disabled ? 0.6 : 1.0;
+    final opacity = effectiveState == AppSurfaceState.disabled ? 0.6 : 1.0;
 
     return AnimatedOpacity(
       duration: const Duration(milliseconds: 180),
       opacity: opacity,
-      child: TweenAnimationBuilder<double>(
+      child: AnimatedScale(
         duration: const Duration(milliseconds: 180),
-        tween: Tween(begin: scale, end: scale),
-        builder: (context, _, childWidget) {
-          return Transform.translate(
-            offset: Offset(0, yOffset),
-            child: Transform.scale(scale: scale, child: childWidget),
-          );
-        },
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: effectiveBackground,
-            borderRadius: BorderRadius.circular(radius),
-            border: Border.all(color: effectiveBorder),
-            boxShadow: surface.cardShadow,
-          ),
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: state == AppSurfaceState.disabled ? null : onTap,
-              borderRadius: BorderRadius.circular(radius),
-              child: Padding(padding: padding, child: child),
+        scale: scale,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          transform: Matrix4.translationValues(0, yOffset, 0),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: effectiveBackground,
+              borderRadius: BorderRadius.circular(widget.radius),
+              border: Border.all(color: effectiveBorder),
+              boxShadow: surface.cardShadow,
+            ),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: widget.state == AppSurfaceState.disabled ? null : widget.onTap,
+                onHover: canInteract
+                    ? (value) => setState(() => isHovered = value)
+                    : null,
+                onHighlightChanged: canInteract
+                    ? (value) => setState(() => isPressed = value)
+                    : null,
+                mouseCursor: canInteract ? SystemMouseCursors.click : SystemMouseCursors.basic,
+                borderRadius: BorderRadius.circular(widget.radius),
+                child: Padding(padding: widget.padding, child: widget.child),
+              ),
             ),
           ),
         ),
       ),
     );
+  }
+
+  AppSurfaceState get _effectiveState {
+    if (widget.state != AppSurfaceState.idle) {
+      return widget.state;
+    }
+    if (isPressed) {
+      return AppSurfaceState.pressed;
+    }
+    return AppSurfaceState.idle;
   }
 }
